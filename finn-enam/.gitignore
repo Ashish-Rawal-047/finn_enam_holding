@@ -1,0 +1,6 @@
+node_modules
+dist
+dist-ssr
+*.local
+.chrome-temp
+.DS_Store
