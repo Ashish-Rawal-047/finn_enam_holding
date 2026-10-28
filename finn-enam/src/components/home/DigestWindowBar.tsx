@@ -71,3 +71,4 @@ export const DigestWindowBar: React.FC<DigestWindowBarProps> = ({
     </div>
   );
 };
+

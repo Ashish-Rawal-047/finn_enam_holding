@@ -53,3 +53,4 @@ export const ManagementChangeView: React.FC<ManagementChangeViewProps> = ({ chan
     </div>
   );
 };
+

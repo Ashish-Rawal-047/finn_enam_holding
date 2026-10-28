@@ -51,3 +51,4 @@ export const BullBearDebate: React.FC<BullBearDebateProps> = ({ bullBear }) => {
     </div>
   );
 };
+

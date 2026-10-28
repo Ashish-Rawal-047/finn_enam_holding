@@ -366,3 +366,4 @@ export const MOCK_ANNOUNCEMENTS: Announcement[] = [
     sourceDocTitle: 'Scrutinizer Postal Ballot Report'
   }
 ];
+

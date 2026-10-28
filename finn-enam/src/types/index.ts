@@ -185,6 +185,19 @@ export interface CompanyResearch {
 
 export type DigestWindow = '24h' | '48h' | '7d' | 'all';
 
+export type NavigationTab = 'today' | 'signals' | 'research' | 'memory';
+
+export type AppTheme = 'light' | 'dark';
+
+export interface TodayInsight {
+  focalSentence: string;
+  subHeadline: string;
+  hasImportantEvents: boolean;
+  primarySignal?: TriggeredAlert;
+  secondarySignals: TriggeredAlert[];
+  eventMemoryHighlight?: EventMemoryItem;
+}
+
 export interface AlertSettings {
   priceMoveThresholdPercent: number;
   volumeSpikeMultiplier: number;
@@ -193,3 +206,4 @@ export interface AlertSettings {
   minSeverity: 'all' | 'high_only' | 'critical_only';
   includeOutOfPortfolio: boolean;
 }
+

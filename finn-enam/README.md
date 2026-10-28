@@ -66,3 +66,4 @@ Per the challenge guidelines, package compatibility was tested prior to setup:
 - **Watchlist Manager:** Manage active portfolio universe with live sparklines and market caps.
 - **Dynamic Sensitivity Sliders:** Price move slider ($\pm 1.5\%$ to $\pm 8.0\%$) and volume spike multiplier ($1.2\times$ to $4.5\times$ 20-DMA) with real-time alert recalculation.
 - **17-Category Filters:** Toggle exchange filing types based on investor mandate.
+

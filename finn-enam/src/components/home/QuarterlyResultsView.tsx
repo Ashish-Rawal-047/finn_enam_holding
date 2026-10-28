@@ -89,3 +89,4 @@ export const QuarterlyResultsView: React.FC<QuarterlyResultsViewProps> = ({ resu
     </div>
   );
 };
+

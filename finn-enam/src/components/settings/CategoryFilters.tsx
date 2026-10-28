@@ -109,3 +109,4 @@ export const CategoryFilters: React.FC<CategoryFiltersProps> = ({
     </div>
   );
 };
+

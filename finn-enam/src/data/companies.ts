@@ -320,3 +320,4 @@ export const MOCK_COMPANIES: Company[] = [
     irUrl: 'https://www.jyoti.co.in'
   }
 ];
+

@@ -301,3 +301,4 @@ export const MOCK_EVENT_MEMORY: EventMemoryItem[] = [
     ]
   }
 ];
+

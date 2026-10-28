@@ -163,3 +163,4 @@ export const AnnouncementCard: React.FC<AnnouncementCardProps> = ({
     </div>
   );
 };
+

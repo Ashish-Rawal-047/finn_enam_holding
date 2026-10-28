@@ -30,7 +30,7 @@ async function getTargets(port) {
 }
 
 async function main() {
-  const port = 9333;
+  const port = 9444;
   const chrome = spawn(chromePath, [
     '--headless=new',
     '--disable-gpu',
@@ -78,9 +78,9 @@ async function main() {
       mobile: true,
       fitWindow: false,
     });
-    await sleep(500);
+    await sleep(600);
 
-    // Evaluate layout
+    // Diagnostics
     const evalData = await send('Runtime.evaluate', {
       expression: `
         (() => {
@@ -108,27 +108,52 @@ async function main() {
     });
     console.log('Mobile Layout Diagnostics:', JSON.stringify(evalData.result.value, null, 2));
 
-    // Screen 1: Home
+    // Capture Screen 1: Today (Warm Editorial Light)
     const s1 = await send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync('finn-enam/screen1-home-mobile.png', Buffer.from(s1.data, 'base64'));
-    console.log('Captured Screen 1 (Home)');
+    fs.writeFileSync('finn-enam/redesign-mobile-today.png', Buffer.from(s1.data, 'base64'));
+    console.log('Captured Screen 1 (Today)');
 
-    // Screen 2: Event Memory
+    // Click on first priority signal to capture Signal Detail Drawer
+    await send('Runtime.evaluate', {
+      expression: `
+        (() => {
+          const signalCard = document.querySelector('section:nth-of-type(3) .cursor-pointer');
+          if (signalCard) signalCard.click();
+        })()
+      `,
+    });
+    await sleep(500);
+    const sDetail = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('finn-enam/redesign-mobile-signal-detail.png', Buffer.from(sDetail.data, 'base64'));
+    console.log('Captured Signal Detail Drawer');
+
+    // Close detail drawer
+    await send('Runtime.evaluate', {
+      expression: `
+        (() => {
+          const closeBtn = document.querySelector('[aria-label="Close"]');
+          if (closeBtn) closeBtn.click();
+        })()
+      `,
+    });
+    await sleep(300);
+
+    // Switch to Screen 2: Signals
     await send('Runtime.evaluate', {
       expression: `
         (() => {
           const buttons = Array.from(document.querySelectorAll('nav button'));
-          const btn = buttons.find(b => b.textContent.includes('Memory'));
+          const btn = buttons.find(b => b.textContent.includes('Signals'));
           if (btn) btn.click();
         })()
       `,
     });
-    await sleep(400);
+    await sleep(500);
     const s2 = await send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync('finn-enam/screen2-memory-mobile.png', Buffer.from(s2.data, 'base64'));
-    console.log('Captured Screen 2 (Event Memory)');
+    fs.writeFileSync('finn-enam/redesign-mobile-signals.png', Buffer.from(s2.data, 'base64'));
+    console.log('Captured Screen 2 (Signals)');
 
-    // Screen 3: Research
+    // Switch to Screen 3: Research
     await send('Runtime.evaluate', {
       expression: `
         (() => {
@@ -138,27 +163,55 @@ async function main() {
         })()
       `,
     });
-    await sleep(400);
+    await sleep(500);
     const s3 = await send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync('finn-enam/screen3-research-mobile.png', Buffer.from(s3.data, 'base64'));
+    fs.writeFileSync('finn-enam/redesign-mobile-research.png', Buffer.from(s3.data, 'base64'));
     console.log('Captured Screen 3 (Research)');
 
-    // Screen 4: Watchlist & Settings
+    // Switch to Screen 4: Event Memory
     await send('Runtime.evaluate', {
       expression: `
         (() => {
           const buttons = Array.from(document.querySelectorAll('nav button'));
-          const btn = buttons.find(b => b.textContent.includes('Watchlist'));
+          const btn = buttons.find(b => b.textContent.includes('Memory'));
           if (btn) btn.click();
         })()
       `,
     });
-    await sleep(400);
+    await sleep(500);
     const s4 = await send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync('finn-enam/screen4-settings-mobile.png', Buffer.from(s4.data, 'base64'));
-    console.log('Captured Screen 4 (Settings)');
+    fs.writeFileSync('finn-enam/redesign-mobile-memory.png', Buffer.from(s4.data, 'base64'));
+    console.log('Captured Screen 4 (Event Memory)');
 
-    // Screen 5: Desktop (1280 x 800)
+    // Toggle to Dark Mode
+    await send('Runtime.evaluate', {
+      expression: `
+        (() => {
+          const themeBtn = document.querySelector('[aria-label="Toggle theme"]');
+          if (themeBtn) themeBtn.click();
+          const buttons = Array.from(document.querySelectorAll('nav button'));
+          const todayBtn = buttons.find(b => b.textContent.includes('Today'));
+          if (todayBtn) todayBtn.click();
+        })()
+      `,
+    });
+    await sleep(500);
+    const sDark = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('finn-enam/redesign-mobile-dark-today.png', Buffer.from(sDark.data, 'base64'));
+    console.log('Captured Dark Mode (Today)');
+
+    // Switch back to light theme for desktop
+    await send('Runtime.evaluate', {
+      expression: `
+        (() => {
+          const themeBtn = document.querySelector('[aria-label="Toggle theme"]');
+          if (themeBtn) themeBtn.click();
+        })()
+      `,
+    });
+    await sleep(200);
+
+    // Desktop Layout (1280 x 800)
     await send('Emulation.setDeviceMetricsOverride', {
       width: 1280,
       height: 800,
@@ -166,19 +219,9 @@ async function main() {
       mobile: false,
       fitWindow: false,
     });
-    // Switch to Home on desktop
-    await send('Runtime.evaluate', {
-      expression: `
-        (() => {
-          const buttons = Array.from(document.querySelectorAll('nav button'));
-          const btn = buttons.find(b => b.textContent.includes('Feed'));
-          if (btn) btn.click();
-        })()
-      `,
-    });
-    await sleep(400);
-    const s5 = await send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync('finn-enam/desktop-home.png', Buffer.from(s5.data, 'base64'));
+    await sleep(500);
+    const sDesktop = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('finn-enam/redesign-desktop-today.png', Buffer.from(sDesktop.data, 'base64'));
     console.log('Captured Desktop View');
 
     ws.close();

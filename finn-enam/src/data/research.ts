@@ -428,3 +428,4 @@ export function getCompanyResearch(ticker: string, companyName?: string, sector?
     ]
   };
 }
+

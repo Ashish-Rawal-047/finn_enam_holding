@@ -10,8 +10,8 @@ interface SparklineProps {
 
 export const Sparkline: React.FC<SparklineProps> = ({
   data,
-  width = 68,
-  height = 24,
+  width = 64,
+  height = 22,
   positive = true,
   className = '',
 }) => {
@@ -29,7 +29,7 @@ export const Sparkline: React.FC<SparklineProps> = ({
     })
     .join(' ');
 
-  const strokeColor = positive ? '#10B981' : '#F43F5E';
+  const strokeColor = positive ? '#059669' : '#E11D48';
 
   return (
     <svg
