@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { EventMemoryItem, CommitmentStatus } from '../types';
 import { Badge } from '../components/common/Badge';
 import { EventMemoryDetailDrawer } from '../components/memory/EventMemoryDetailDrawer';
@@ -24,6 +24,16 @@ export const EventMemoryScreen: React.FC<EventMemoryScreenProps> = ({
     }
     return null;
   });
+
+  // Keep activeItem in sync if parent passes a new initialActiveId (e.g. from Today spotlight or Signal link)
+  useEffect(() => {
+    if (initialActiveId) {
+      const match = memoryItems.find((m) => m.id === initialActiveId);
+      if (match) {
+        setActiveItem(match);
+      }
+    }
+  }, [initialActiveId, memoryItems]);
 
   const statusOptions: Array<{ id: string; label: string }> = [
     { id: 'all', label: 'All Status' },
