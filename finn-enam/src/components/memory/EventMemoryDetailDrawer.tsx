@@ -69,13 +69,13 @@ export const EventMemoryDetailDrawer: React.FC<EventMemoryDetailDrawerProps> = (
         </div>
 
         {/* VERBATIM ORIGINAL COMMITMENT */}
-        <div className="rounded-xl border-l-4 border-l-teal-600 border border-stone-200/80 dark:border-ink-border bg-white dark:bg-ink-surface p-3.5 space-y-1.5">
+        <div className="rounded-xl bg-teal-50/50 dark:bg-teal-950/20 border border-teal-200/80 dark:border-teal-900/40 p-3.5 space-y-1.5">
           <div className="flex items-center justify-between text-[10px] font-mono uppercase text-teal-800 dark:text-teal-400">
-            <span>Original Management Promise ({item.commitmentDate})</span>
-            <span className="text-stone-400">{item.sourceDoc}</span>
+            <span className="font-semibold">Original Management Promise ({item.commitmentDate})</span>
+            <span className="text-stone-500 dark:text-slate-400">{item.sourceDoc}</span>
           </div>
           <p className="text-xs text-stone-800 dark:text-slate-200 italic leading-relaxed">
-            {item.sourcePageOrQuote}
+            "{item.sourcePageOrQuote}"
           </p>
         </div>
 

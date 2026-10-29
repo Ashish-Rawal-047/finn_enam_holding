@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Company, CompanyResearch } from '../types';
 import { getCompanyResearch } from '../data/research';
 import { FinnApi } from '../services/api';
-import { Search, Star, ExternalLink, FileText, Sparkles, Scale, ShieldCheck, ArrowUpRight, ArrowDownRight, CornerDownLeft } from 'lucide-react';
+import { Search, Star, ExternalLink, FileText, Sparkles, ShieldCheck, CornerDownLeft } from 'lucide-react';
 import { Badge } from '../components/common/Badge';
 
 interface ResearchScreenProps {
@@ -173,6 +173,17 @@ export const ResearchScreen: React.FC<ResearchScreenProps> = ({
     }, 600);
   };
 
+  // Helper to split ticker into clean symbol and suffix
+  const formatTicker = (ticker: string) => {
+    const parts = ticker.split('.');
+    return (
+      <span className="font-mono">
+        <span className="font-bold text-lg text-stone-900 dark:text-white">{parts[0]}</span>
+        {parts[1] && <span className="text-xs text-stone-400 dark:text-slate-500">.{parts[1]}</span>}
+      </span>
+    );
+  };
+
   const tabs: Array<{ id: ResearchTab; label: string }> = [
     { id: 'overview', label: 'Overview' },
     { id: 'financials', label: 'Financials' },
@@ -194,7 +205,7 @@ export const ResearchScreen: React.FC<ResearchScreenProps> = ({
           </p>
         </div>
 
-        {/* Ticker Search Bar */}
+        {/* Ticker Search Bar with Autocomplete */}
         <div className="relative">
           <form onSubmit={handleSearchSubmit} className="relative">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -261,7 +272,7 @@ export const ResearchScreen: React.FC<ResearchScreenProps> = ({
         </div>
 
         {/* Research Shortcuts Row */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px]">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] no-scrollbar">
           {['TRENT.NS', 'DIXON.NS', 'POLYCAB.NS', 'INFY.NS', 'RELIANCE.NS', 'ZOMATO.NS', 'KAYNES.NS'].map((ticker) => (
             <button
               key={ticker}
@@ -278,21 +289,19 @@ export const ResearchScreen: React.FC<ResearchScreenProps> = ({
         </div>
       </section>
 
-      {/* 2. ACTIVE COMPANY IDENTITY & EXECUTIVE SNAPSHOT */}
+      {/* 2. ACTIVE COMPANY IDENTITY & SNAPSHOT */}
       <section className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/90 dark:border-ink-border p-4 sm:p-5 shadow-subtle space-y-3.5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="font-mono text-base font-bold text-stone-900 dark:text-white">
-                {research.ticker}
-              </h2>
+              {formatTicker(research.ticker)}
               <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-stone-100 dark:bg-slate-800 text-stone-600 dark:text-slate-300">
                 {research.marketCap}
               </span>
             </div>
-            <h3 className="text-sm font-semibold text-stone-700 dark:text-slate-200 mt-0.5">
+            <h2 className="text-sm font-semibold text-stone-800 dark:text-slate-200 mt-0.5">
               {research.name}
-            </h3>
+            </h2>
             <p className="text-xs text-stone-500 dark:text-slate-400 font-mono mt-0.5">
               {research.sector}
             </p>
@@ -300,10 +309,10 @@ export const ResearchScreen: React.FC<ResearchScreenProps> = ({
 
           <button
             onClick={() => onToggleWatchlist(research.ticker)}
-            className={`p-2 rounded-xl border transition-colors ${
+            className={`p-2.5 rounded-xl border transition-colors ${
               isWatched
-                ? 'bg-amber-50 border-amber-300 text-amber-600 dark:bg-amber-950/40 dark:border-amber-800/40 dark:text-amber-400'
-                : 'bg-stone-50 border-stone-200 text-stone-400 hover:text-stone-700 dark:bg-ink-bg dark:border-ink-border'
+                ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-300 text-amber-600'
+                : 'bg-stone-50 dark:bg-ink-surfaceSubtle border-stone-200 dark:border-ink-border text-stone-400 hover:text-stone-700'
             }`}
             title={isWatched ? 'Remove from Watchlist' : 'Add to Watchlist'}
           >
@@ -311,235 +320,242 @@ export const ResearchScreen: React.FC<ResearchScreenProps> = ({
           </button>
         </div>
 
-        {/* Concise Business Snapshot & Moat */}
-        <p className="text-xs text-stone-700 dark:text-slate-300 leading-relaxed">
+        {/* Concise Business Model Summary */}
+        <p className="text-xs text-stone-600 dark:text-slate-300 leading-relaxed font-normal">
           {research.businessSnapshot.summary}
         </p>
 
-        <div className="rounded-xl bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200/80 dark:border-teal-900/30 p-3 text-xs">
-          <strong className="text-teal-900 dark:text-teal-300 font-semibold">Institutional Moat: </strong>
-          <span className="text-teal-800 dark:text-teal-200">{research.businessSnapshot.keyMoat}</span>
+        {/* Institutional Moat Box */}
+        <div className="rounded-xl bg-teal-50/60 dark:bg-teal-950/20 border border-teal-200/80 dark:border-teal-900/40 p-3 text-xs leading-relaxed">
+          <span className="font-semibold text-teal-900 dark:text-teal-200 font-mono text-[10px] uppercase block mb-1">
+            Institutional Moat:
+          </span>
+          <p className="text-teal-950 dark:text-teal-100 font-normal">
+            {research.businessSnapshot.keyMoat}
+          </p>
         </div>
       </section>
 
-      {/* 3. SENSIBLE SEGMENTED NAV SELECTOR (One detail section dominates at a time) */}
-      <section className="space-y-3">
-        <div className="flex rounded-xl bg-stone-100 dark:bg-ink-surfaceSubtle p-1 border border-stone-200/80 dark:border-ink-border overflow-x-auto text-xs">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 min-w-[70px] py-1.5 px-2 rounded-lg text-center font-medium transition-all whitespace-nowrap ${
-                activeTab === tab.id
-                  ? 'bg-white dark:bg-ink-surface text-stone-900 dark:text-white font-semibold shadow-subtle'
-                  : 'text-stone-500 dark:text-slate-400 hover:text-stone-900'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+      {/* 3. SEGMENTED EXPLORATION TABS (Scrollable on Mobile, Zero Crowding) */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-3.5 py-1.5 rounded-xl font-medium transition-all whitespace-nowrap text-xs ${
+              activeTab === tab.id
+                ? 'bg-stone-900 dark:bg-white text-white dark:text-stone-900 font-semibold shadow-sm'
+                : 'bg-stone-100 dark:bg-ink-surfaceSubtle text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        {/* TAB 1: OVERVIEW */}
-        {activeTab === 'overview' && (
-          <div className="space-y-3">
-            {/* Segment Breakdown */}
-            <div className="rounded-xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-stone-100 dark:border-ink-border pb-2">
-                <span className="text-xs font-mono uppercase tracking-wider text-stone-700 dark:text-slate-300 font-semibold">
-                  Operating Segments & Revenue Mix
-                </span>
-                <span className="text-[10px] text-stone-400 font-mono">Consolidated Share</span>
-              </div>
-
-              <div className="space-y-2 text-xs">
-                {research.businessSnapshot.segments.map((seg, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs font-medium">
-                      <span className="text-stone-800 dark:text-slate-200">{seg.name}</span>
-                      <span className="font-mono text-stone-900 dark:text-white font-semibold">
-                        {seg.sharePercent}% <span className="text-emerald-700 dark:text-emerald-400 text-[11px]">(+{seg.growthYoY}% YoY)</span>
-                      </span>
-                    </div>
-                    {/* Visual Segment Share Bar */}
-                    <div className="h-1.5 w-full rounded-full bg-stone-100 dark:bg-slate-800 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-teal-600 dark:bg-teal-500 transition-all"
-                        style={{ width: `${seg.sharePercent}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Quick KPI Strip */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <div className="rounded-xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border p-3">
-                <span className="text-[10px] uppercase font-mono text-stone-400 block">Revenue (TTM)</span>
-                <span className="text-sm font-bold font-mono text-stone-900 dark:text-white mt-0.5 block">{research.financialSnapshot.revenueTtm}</span>
-              </div>
-              <div className="rounded-xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border p-3">
-                <span className="text-[10px] uppercase font-mono text-stone-400 block">EBITDA Margin</span>
-                <span className="text-sm font-bold font-mono text-teal-700 dark:text-teal-400 mt-0.5 block">{research.financialSnapshot.ebitdaMargin}</span>
-              </div>
-              <div className="rounded-xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border p-3">
-                <span className="text-[10px] uppercase font-mono text-stone-400 block">ROCE / ROE</span>
-                <span className="text-sm font-bold font-mono text-stone-900 dark:text-white mt-0.5 block">{research.financialSnapshot.roce} / {research.financialSnapshot.roe}</span>
-              </div>
-              <div className="rounded-xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border p-3">
-                <span className="text-[10px] uppercase font-mono text-stone-400 block">Debt-to-Equity</span>
-                <span className="text-sm font-bold font-mono text-emerald-700 dark:text-emerald-400 mt-0.5 block">{research.financialSnapshot.debtToEquity}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: FINANCIALS & CASH QUALITY */}
-        {activeTab === 'financials' && (
-          <div className="space-y-3">
-            <div className="rounded-xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-stone-100 dark:border-ink-border pb-2">
-                <span className="text-xs font-mono uppercase tracking-wider text-stone-700 dark:text-slate-300 font-semibold flex items-center gap-1.5">
-                  <ShieldCheck size={14} className="text-teal-700 dark:text-teal-400" />
-                  Cash Flow Quality & Conversion Audit
-                </span>
-                <span className="text-[10px] font-mono text-stone-500">
-                  CFO / PAT: <strong className="text-stone-900 dark:text-white font-semibold">{research.financialSnapshot.cfoPatConversion.toFixed(2)}x</strong>
-                </span>
-              </div>
-
-              <p className="text-xs text-stone-600 dark:text-slate-300 leading-relaxed">
-                {research.cashQualityAnalysis.cfoVsPatCommentary}
-              </p>
-
-              <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                <div className="p-2.5 rounded-lg bg-stone-50 dark:bg-ink-bg border border-stone-100 dark:border-ink-borderSubtle">
-                  <span className="text-[10px] uppercase font-mono text-stone-400 block">Working Capital Cycle</span>
-                  <span className="font-semibold text-stone-900 dark:text-white font-mono">{research.financialSnapshot.workingCapitalDays} Days</span>
-                </div>
-                <div className="p-2.5 rounded-lg bg-stone-50 dark:bg-ink-bg border border-stone-100 dark:border-ink-borderSubtle">
-                  <span className="text-[10px] uppercase font-mono text-stone-400 block">Free Cash Flow (TTM)</span>
-                  <span className="font-semibold text-stone-900 dark:text-white font-mono">{research.financialSnapshot.fcfTtm}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: TRACK RECORD (NARRATIVE VS NUMBERS) */}
-        {activeTab === 'track_record' && (
-          <div className="space-y-3">
-            <div className="rounded-xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-stone-100 dark:border-ink-border pb-2">
-                <span className="text-xs font-mono uppercase tracking-wider text-stone-700 dark:text-slate-300 font-semibold flex items-center gap-1.5">
-                  <Scale size={14} className="text-teal-700 dark:text-teal-400" />
-                  Narrative vs. Numbers: 4-Quarter Audit
-                </span>
-                <span className="text-[10px] text-stone-400 font-mono">Promises vs. Audited Delivery</span>
-              </div>
-
-              <div className="space-y-2.5 text-xs">
-                {research.narrativeVsNumbers.map((row, idx) => (
-                  <div key={idx} className="rounded-lg bg-stone-50 dark:bg-ink-bg p-3 border border-stone-100 dark:border-ink-borderSubtle space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-bold text-stone-900 dark:text-white">{row.period}</span>
-                      <Badge variant={row.varianceType === 'beat' ? 'emerald' : row.varianceType === 'miss' ? 'rose' : 'teal'} size="xs">
-                        {row.variance}
-                      </Badge>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
-                      <div>
-                        <span className="text-[10px] font-mono text-stone-400 block">Guidance Stated:</span>
-                        <p className="text-stone-700 dark:text-slate-300 leading-snug">{row.managementGuidance}</p>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-mono text-stone-400 block">Actual Outcome:</span>
-                        <p className="text-stone-900 dark:text-white font-medium leading-snug">{row.actualDelivered}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 4: THESIS (BULL VS BEAR) */}
-        {activeTab === 'thesis' && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              {/* Bull Case */}
-              <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-950 bg-emerald-50/40 dark:bg-emerald-950/15 p-4 space-y-2">
-                <div className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300 font-semibold font-mono text-xs">
-                  <ArrowUpRight size={14} /> Institutional Bull Case
-                </div>
-                <ul className="space-y-2 text-stone-700 dark:text-slate-300">
-                  {research.bullBear.bullCase.map((b, i) => (
-                    <li key={i} className="flex items-start gap-1.5 leading-relaxed">
-                      <span className="text-emerald-600 font-bold">•</span>
-                      <span>{b}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Bear Case */}
-              <div className="rounded-xl border border-rose-200/80 dark:border-rose-950 bg-rose-50/40 dark:bg-rose-950/15 p-4 space-y-2">
-                <div className="flex items-center gap-1.5 text-rose-800 dark:text-rose-300 font-semibold font-mono text-xs">
-                  <ArrowDownRight size={14} /> Key Downside Risks
-                </div>
-                <ul className="space-y-2 text-stone-700 dark:text-slate-300">
-                  {research.bullBear.bearCase.map((b, i) => (
-                    <li key={i} className="flex items-start gap-1.5 leading-relaxed">
-                      <span className="text-rose-600 font-bold">•</span>
-                      <span>{b}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 5: PRIMARY SOURCES */}
-        {activeTab === 'sources' && (
-          <div className="rounded-xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border p-4 space-y-3">
+      {/* 4. ACTIVE TAB CONTENT */}
+      {/* TAB A: OVERVIEW & SEGMENTS */}
+      {activeTab === 'overview' && (
+        <section className="space-y-4">
+          <div className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/90 dark:border-ink-border p-4 shadow-subtle space-y-3">
             <div className="flex items-center justify-between border-b border-stone-100 dark:border-ink-border pb-2">
-              <span className="text-xs font-mono uppercase tracking-wider text-stone-700 dark:text-slate-300 font-semibold flex items-center gap-1.5">
-                <FileText size={14} className="text-teal-700 dark:text-teal-400" />
-                Audited Primary Source Disclosures
+              <span className="text-[11px] font-mono uppercase tracking-wider text-stone-500 dark:text-slate-400 font-semibold">
+                Operating Segments & Revenue Mix
               </span>
-              <span className="text-[10px] text-stone-400 font-mono">No Broker Commentary</span>
+              <span className="text-[10px] text-stone-400 font-mono">Consolidated Share</span>
             </div>
 
-            <div className="space-y-2 text-xs">
-              {research.primarySources.map((source, idx) => (
-                <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-stone-50 dark:bg-ink-bg border border-stone-100 dark:border-ink-borderSubtle">
-                  <div>
-                    <span className="text-[10px] font-mono uppercase text-teal-700 dark:text-teal-400 font-semibold block">
-                      {source.type} • {source.period}
+            <div className="space-y-3 pt-1">
+              {research.businessSnapshot.segments.map((seg, i) => (
+                <div key={i} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-stone-800 dark:text-slate-200">
+                      {seg.name}
                     </span>
-                    <span className="font-medium text-stone-800 dark:text-slate-200">{source.title}</span>
+                    <span className="font-mono text-stone-900 dark:text-white font-semibold">
+                      {seg.sharePercent}%{' '}
+                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-normal">
+                        (+{seg.growthYoY}% YoY)
+                      </span>
+                    </span>
                   </div>
-                  <a
-                    href={source.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-teal-700 dark:text-teal-400 hover:underline font-mono text-[11px] ml-2 flex-shrink-0"
-                  >
-                    <span>View</span>
-                    <ExternalLink size={10} />
-                  </a>
+                  {/* Proportional visual bar */}
+                  <div className="h-1.5 w-full rounded-full bg-stone-100 dark:bg-ink-border overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-stone-800 dark:bg-teal-400"
+                      style={{ width: `${seg.sharePercent}%` }}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      {/* 4. ON-DEMAND INVESTOR QUERY BAR */}
+      {/* TAB B: FINANCIAL SNAPSHOT & CASH QUALITY */}
+      {activeTab === 'financials' && (
+        <section className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {[
+              { label: 'Revenue TTM', val: research.financialSnapshot.revenueTtm },
+              { label: 'EBITDA Margin', val: research.financialSnapshot.ebitdaMargin },
+              { label: 'ROCE', val: research.financialSnapshot.roce },
+              { label: 'ROE', val: research.financialSnapshot.roe },
+              { label: 'Debt / Equity', val: research.financialSnapshot.debtToEquity },
+              { label: 'Working Capital', val: `${research.financialSnapshot.workingCapitalDays} Days` },
+              { label: 'FCF TTM', val: research.financialSnapshot.fcfTtm },
+              { label: 'CFO / PAT', val: `${research.financialSnapshot.cfoPatConversion.toFixed(2)}x` },
+            ].map((kpi, idx) => (
+              <div
+                key={idx}
+                className="p-3 rounded-xl bg-white dark:bg-ink-surface border border-stone-200/90 dark:border-ink-border shadow-subtle"
+              >
+                <span className="text-[10px] uppercase font-mono tracking-wider text-stone-400 dark:text-slate-500 block">
+                  {kpi.label}
+                </span>
+                <span className="text-sm font-bold text-stone-900 dark:text-white font-mono mt-0.5 block">
+                  {kpi.val}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Cash Flow Quality Audit */}
+          <div className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/90 dark:border-ink-border p-4 shadow-subtle space-y-2">
+            <span className="text-[11px] font-mono uppercase tracking-wider text-stone-500 dark:text-slate-400 font-semibold block">
+              Quality of Earnings & Cash Conversion
+            </span>
+            <p className="text-xs text-stone-700 dark:text-slate-300 leading-relaxed">
+              {research.cashQualityAnalysis.cfoVsPatCommentary}
+            </p>
+            <div className="pt-2 border-t border-stone-100 dark:border-ink-border text-[11px] text-stone-500 dark:text-slate-400 font-mono flex items-center justify-between">
+              <span>Working Capital Cycle: {research.financialSnapshot.workingCapitalDays} days</span>
+              <span className="text-emerald-700 dark:text-emerald-400 font-semibold">Clean Balance Sheet</span>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* TAB C: TRACK RECORD (NARRATIVE VS NUMBERS - The Gold Standard) */}
+      {activeTab === 'track_record' && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-stone-900 dark:text-white">
+              Narrative vs. Audited Numbers
+            </span>
+            <span className="text-[10px] font-mono text-stone-400">Verbal Promise vs. Reality</span>
+          </div>
+
+          <div className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border divide-y divide-stone-100 dark:divide-ink-border overflow-hidden shadow-subtle">
+            {research.narrativeVsNumbers.map((item, i) => (
+              <div key={i} className="p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold text-stone-900 dark:text-white">
+                    {item.period}
+                  </span>
+                  <Badge
+                    variant={item.varianceType === 'beat' ? 'emerald' : item.varianceType === 'met' ? 'teal' : 'rose'}
+                    size="xs"
+                    dot
+                  >
+                    {item.varianceType.toUpperCase()}
+                  </Badge>
+                </div>
+
+                <div className="space-y-1 text-xs">
+                  <div className="text-stone-600 dark:text-slate-300">
+                    <strong className="text-stone-800 dark:text-slate-200 font-medium">Promise: </strong>
+                    {item.managementGuidance}
+                  </div>
+                  <div className="text-stone-800 dark:text-slate-200 font-medium">
+                    <strong className="text-emerald-700 dark:text-emerald-400 font-semibold">Delivered: </strong>
+                    {item.actualDelivered}
+                  </div>
+                </div>
+
+                <div className="pt-1.5 flex items-center justify-between text-[11px] text-stone-400 dark:text-slate-500 font-mono">
+                  <span>Variance: {item.variance}</span>
+                  <span className="text-[10px] text-stone-500 truncate max-w-[160px]">{item.sourceDoc}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* TAB D: BULL VS BEAR DEBATE */}
+      {activeTab === 'thesis' && (
+        <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Bull Case */}
+          <div className="rounded-2xl bg-white dark:bg-ink-surface border border-emerald-200/80 dark:border-emerald-950/40 p-4 shadow-subtle space-y-2.5">
+            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 font-mono uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Institutional Bull Case
+            </span>
+            <ul className="space-y-2 text-xs text-stone-700 dark:text-slate-300 leading-relaxed">
+              {research.bullBear.bullCase.map((pt, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-emerald-600 font-bold">&bull;</span>
+                  <span>{pt}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Bear Case / Risks */}
+          <div className="rounded-2xl bg-white dark:bg-ink-surface border border-rose-200/80 dark:border-rose-950/40 p-4 shadow-subtle space-y-2.5">
+            <span className="text-xs font-bold text-rose-800 dark:text-rose-300 font-mono uppercase tracking-wider flex items-center gap-1.5">
+              <span className="h-2 w-2 rounded-full bg-rose-500" />
+              Fundamental Bear Case & Risks
+            </span>
+            <ul className="space-y-2 text-xs text-stone-700 dark:text-slate-300 leading-relaxed">
+              {research.bullBear.bearCase.map((pt, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-rose-600 font-bold">&bull;</span>
+                  <span>{pt}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* TAB E: PRIMARY EVIDENCE & SOURCES */}
+      {activeTab === 'sources' && (
+        <section className="space-y-2.5">
+          <span className="text-xs font-semibold text-stone-900 dark:text-white block">
+            Audited Primary Source Disclosures
+          </span>
+          <div className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border divide-y divide-stone-100 dark:divide-ink-border overflow-hidden shadow-subtle">
+            {research.primarySources.map((src, i) => (
+              <div key={i} className="p-3.5 flex items-center justify-between text-xs">
+                <div className="space-y-0.5">
+                  <div className="font-semibold text-stone-900 dark:text-white flex items-center gap-1.5">
+                    <FileText size={13} className="text-stone-400" />
+                    <span>{src.title}</span>
+                  </div>
+                  <div className="text-[11px] text-stone-500 font-mono">
+                    {src.type} &bull; {src.period}
+                  </div>
+                </div>
+
+                <a
+                  href={src.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-teal-700 dark:text-teal-400 hover:underline text-[11px] font-mono flex-shrink-0 ml-3"
+                >
+                  <span>Open PDF</span>
+                  <ExternalLink size={11} />
+                </a>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* 5. ON-DEMAND INVESTOR QUERY BAR */}
       <section className="rounded-2xl bg-stone-50 dark:bg-ink-surfaceSubtle border border-stone-200/80 dark:border-ink-border p-4 space-y-2.5">
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-stone-800 dark:text-slate-200 flex items-center gap-1.5">
@@ -576,7 +592,7 @@ export const ResearchScreen: React.FC<ResearchScreenProps> = ({
         </form>
 
         {/* Suggested Prompt Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px]">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] no-scrollbar">
           {[
             'What is the FY26 margin guidance?',
             'Has working capital cycle expanded?',

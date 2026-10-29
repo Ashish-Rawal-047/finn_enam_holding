@@ -147,3 +147,4 @@ export const SignalFilterDrawer: React.FC<SignalFilterDrawerProps> = ({
     </Drawer>
   );
 };
+

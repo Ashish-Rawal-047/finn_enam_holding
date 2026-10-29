@@ -26,7 +26,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     (a) => a.severity === 'critical' || a.severity === 'high'
   );
 
-  // Compute dynamic focal synthesis based on available facts
+  // Compute dynamic focal synthesis based on available facts without repeating tickers
   let focalHeadline = "No critical alerts across your watchlist today.";
   let focalExplanation = "Monitored exchange disclosures and end-of-day market movements remain within standard volatility thresholds.";
 
@@ -38,14 +38,17 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       focalExplanation = top.explanation;
     } else {
       focalHeadline = `${uniqueTickers.length} companies require your attention today.`;
-      // Explain top 2 findings
       const first = highPriorityAlerts[0];
-      const second = highPriorityAlerts[1];
-      focalExplanation = `${first.ticker} recorded an extraordinary ${first.triggerMetric} move, while ${second.ticker} filed a high-impact disclosure.`;
+      const second = highPriorityAlerts.find((a) => a.ticker !== first.ticker) || highPriorityAlerts[1];
+      if (second && second.ticker !== first.ticker) {
+        focalExplanation = `${first.ticker} recorded an exceptional ${first.triggerMetric} move, while ${second.ticker} crossed threshold criteria with material filings.`;
+      } else {
+        focalExplanation = `${first.ticker} recorded an extraordinary ${first.triggerMetric} move alongside material exchange disclosures.`;
+      }
     }
   }
 
-  // 2. Compact Portfolio Snapshot (3 metrics max)
+  // 2. Compact Watchlist Universe Snapshot (Max 3 Metrics)
   const watchlistCount = companies.filter((c) => c.inWatchlist).length;
   const advancingCount = companies.filter((c) => c.changePercent > 0).length;
   const decliningCount = companies.filter((c) => c.changePercent < 0).length;
@@ -54,20 +57,31 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
   ).toFixed(2);
   const isAvgPositive = parseFloat(avgChange) >= 0;
 
-  // 3. Top 3 Signals Only (Progressive disclosure: takeaway first)
+  // 3. Top 3 Priority Signals Only (Progressive disclosure: takeaway first)
   const topThreeSignals = triggeredAlerts.slice(0, 3);
 
-  // 4. Single Event Memory Highlight (to introduce the signature feature)
+  // 4. Single Event Memory Highlight (Signature innovation spotlight)
   const spotlightMemory = eventMemoryItems.find(
     (m) => m.status === 'delivered' || m.status === 'delayed'
   ) || eventMemoryItems[0];
 
+  // Helper to split ticker into clean symbol and suffix
+  const formatTicker = (ticker: string) => {
+    const parts = ticker.split('.');
+    return (
+      <span className="font-mono text-xs">
+        <span className="font-bold text-stone-900 dark:text-white">{parts[0]}</span>
+        {parts[1] && <span className="text-[10px] text-stone-400 dark:text-slate-500">.{parts[1]}</span>}
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-6 pb-24 pt-2">
-      {/* 1. THE FOCAL POINT (Main Editorial Insight) */}
+      {/* 1. THE FOCAL POINT (Main Editorial Briefing Insight) */}
       <section className="space-y-2">
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-mono uppercase tracking-wider text-stone-500 dark:text-slate-400">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500 dark:text-slate-400">
             Wednesday, October 29 • Briefing
           </span>
         </div>
@@ -76,7 +90,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           {focalHeadline}
         </h1>
 
-        <p className="text-sm text-stone-600 dark:text-slate-300 leading-relaxed max-w-xl font-normal">
+        <p className="text-xs sm:text-sm text-stone-600 dark:text-slate-300 leading-relaxed max-w-xl font-normal">
           {focalExplanation}
         </p>
       </section>
@@ -89,7 +103,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
               Watchlist Universe
             </span>
             <div className="text-sm font-semibold text-stone-900 dark:text-white font-mono mt-0.5">
-              {watchlistCount} <span className="text-xs font-normal text-stone-500">of {companies.length}</span>
+              {watchlistCount} <span className="text-xs font-normal text-stone-500 dark:text-slate-400">of {companies.length}</span>
             </div>
           </div>
 
@@ -100,7 +114,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
             <div className="text-sm font-semibold text-stone-900 dark:text-white font-mono mt-0.5 flex items-center gap-1.5">
               <span>{priorityCount}</span>
               {priorityCount > 0 && (
-                <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+                <span className="h-1.5 w-1.5 rounded-full bg-teal-600 dark:bg-teal-400" />
               )}
             </div>
           </div>
@@ -119,22 +133,22 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                   <TrendingDown size={13} className="mr-0.5" /> {avgChange}%
                 </span>
               )}
-              <span className="text-[10px] font-normal text-stone-400 dark:text-slate-500 hidden xs:inline">
-                ({advancingCount}↑ {decliningCount}↓)
+              <span className="text-[10px] text-stone-400 dark:text-slate-500 font-normal ml-0.5">
+                ({advancingCount}&uarr; {decliningCount}&darr;)
               </span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 3. PRIORITY SIGNALS (Top 3 Only) */}
-      <section className="space-y-3">
+      {/* 3. PRIORITY SIGNALS (Unified Editorial Stream, Not Identical Cloned Boxes) */}
+      <section className="space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="text-xs font-mono uppercase tracking-wider text-stone-700 dark:text-slate-300 font-semibold">
+            <h2 className="text-[11px] font-mono uppercase tracking-wider text-stone-700 dark:text-slate-300 font-semibold">
               Priority Signals
             </h2>
-            <span className="text-[11px] text-stone-400 dark:text-slate-500">
+            <span className="text-[10px] text-stone-400 dark:text-slate-500 font-mono">
               ({topThreeSignals.length} of {triggeredAlerts.length})
             </span>
           </div>
@@ -148,19 +162,18 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           </button>
         </div>
 
-        <div className="space-y-2.5">
+        {/* Unified Editorial List */}
+        <div className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border divide-y divide-stone-100 dark:divide-ink-border overflow-hidden shadow-subtle">
           {topThreeSignals.map((signal) => (
             <div
               key={signal.id}
               onClick={() => onSelectSignal(signal)}
-              className="group cursor-pointer rounded-xl bg-white dark:bg-ink-surface border border-stone-200/90 dark:border-ink-border p-4 shadow-subtle hover:border-stone-400/80 dark:hover:border-slate-700 transition-all active:scale-[0.99]"
+              className="group cursor-pointer p-4 hover:bg-stone-50/70 dark:hover:bg-ink-surfaceSubtle transition-colors"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                    <span className="font-mono text-xs font-bold text-stone-900 dark:text-white tracking-tight">
-                      {signal.ticker}
-                    </span>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    {formatTicker(signal.ticker)}
                     <span className="text-xs text-stone-500 dark:text-slate-400 truncate max-w-[140px]">
                       {signal.companyName}
                     </span>
@@ -172,7 +185,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                     </Badge>
                   </div>
 
-                  <h3 className="text-sm font-semibold text-stone-900 dark:text-white leading-snug group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">
+                  <h3 className="text-xs sm:text-sm font-semibold text-stone-900 dark:text-white leading-snug group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">
                     {signal.headline}
                   </h3>
 
@@ -194,8 +207,8 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           ))}
 
           {topThreeSignals.length === 0 && (
-            <div className="rounded-xl border border-dashed border-stone-200 dark:border-ink-border p-8 text-center text-xs text-stone-500 dark:text-slate-400">
-              No active priority signals detected across your watchlist.
+            <div className="p-8 text-center text-xs text-stone-500 dark:text-slate-400">
+              No active priority signals detected across your watchlist today.
             </div>
           )}
         </div>
@@ -207,7 +220,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <History size={13} className="text-teal-700 dark:text-teal-400" />
-              <h2 className="text-xs font-mono uppercase tracking-wider text-stone-700 dark:text-slate-300 font-semibold">
+              <h2 className="text-[11px] font-mono uppercase tracking-wider text-stone-700 dark:text-slate-300 font-semibold">
                 Event Memory Spotlight
               </h2>
             </div>
@@ -221,14 +234,12 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
 
           <div
             onClick={() => onNavigateToMemory(spotlightMemory.id)}
-            className="group cursor-pointer rounded-xl bg-white dark:bg-ink-surface border border-stone-200/90 dark:border-ink-border p-4 shadow-subtle hover:border-teal-600/50 dark:hover:border-teal-500/50 transition-all"
+            className="group cursor-pointer rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border p-4 shadow-subtle hover:border-teal-600/50 dark:hover:border-teal-500/50 transition-all"
           >
             <div className="flex items-start justify-between gap-2">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-stone-900 dark:text-white">
-                    {spotlightMemory.ticker}
-                  </span>
+                  {formatTicker(spotlightMemory.ticker)}
                   <Badge variant={spotlightMemory.status === 'delivered' ? 'emerald' : 'amber'} size="xs" dot>
                     {spotlightMemory.status.toUpperCase()}
                   </Badge>

@@ -168,7 +168,11 @@ export function App() {
                     <span>{item.label}</span>
                   </div>
                   {item.badge && item.badge > 0 ? (
-                    <span className="h-4 min-w-[16px] px-1 rounded-full bg-rose-500 text-white font-mono text-[9px] font-bold flex items-center justify-center">
+                    <span className={`h-4 min-w-[16px] px-1.5 rounded-full font-mono text-[9px] font-medium flex items-center justify-center ${
+                      isActive
+                        ? 'bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900'
+                        : 'bg-stone-200 text-stone-700 dark:bg-slate-800 dark:text-slate-300'
+                    }`}>
                       {item.badge}
                     </span>
                   ) : null}

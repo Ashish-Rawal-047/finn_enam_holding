@@ -60,7 +60,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               <div className="relative">
                 <Icon size={19} strokeWidth={isActive ? 2.2 : 1.7} />
                 {tab.badge > 0 && (
-                  <span className="absolute -right-2 -top-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-rose-500 px-1 text-[8px] font-bold text-white shadow-sm">
+                  <span className="absolute -right-2 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-stone-800 dark:bg-stone-200 px-1 text-[8px] font-medium text-white dark:text-stone-900 font-mono">
                     {tab.badge}
                   </span>
                 )}

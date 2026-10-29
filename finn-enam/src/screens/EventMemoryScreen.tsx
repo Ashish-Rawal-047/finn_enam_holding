@@ -79,6 +79,17 @@ export const EventMemoryScreen: React.FC<EventMemoryScreenProps> = ({
     }
   };
 
+  // Helper to split ticker into clean symbol and suffix
+  const formatTicker = (ticker: string) => {
+    const parts = ticker.split('.');
+    return (
+      <span className="font-mono text-xs">
+        <span className="font-bold text-stone-900 dark:text-white">{parts[0]}</span>
+        {parts[1] && <span className="text-[10px] text-stone-400 dark:text-slate-500">.{parts[1]}</span>}
+      </span>
+    );
+  };
+
   return (
     <div className="space-y-5 pb-24 pt-2">
       {/* 1. EDITORIAL TITLE & PROMISE */}
@@ -111,7 +122,7 @@ export const EventMemoryScreen: React.FC<EventMemoryScreenProps> = ({
             <span className="text-sm font-bold text-stone-900 dark:text-white font-mono mt-0.5 block">{pendingCount}</span>
           </div>
           <div className="flex-1 px-2">
-            <span className="text-[10px] font-mono uppercase text-rose-600 dark:text-rose-400 block">Delayed / Rescheduled</span>
+            <span className="text-[10px] font-mono uppercase text-rose-600 dark:text-rose-400 block">Delayed</span>
             <span className="text-sm font-bold text-stone-900 dark:text-white font-mono mt-0.5 block">{delayedCount}</span>
           </div>
         </div>
@@ -130,7 +141,7 @@ export const EventMemoryScreen: React.FC<EventMemoryScreenProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px]">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] no-scrollbar">
           {statusOptions.map((opt) => (
             <button
               key={opt.id}
@@ -138,7 +149,7 @@ export const EventMemoryScreen: React.FC<EventMemoryScreenProps> = ({
               className={`rounded-lg px-2.5 py-1 font-medium transition-colors whitespace-nowrap ${
                 selectedStatus === opt.id
                   ? 'bg-stone-900 dark:bg-white text-white dark:text-stone-900 font-semibold'
-                  : 'bg-white dark:bg-ink-surface text-stone-600 dark:text-slate-300 border border-stone-200/80 dark:border-ink-border'
+                  : 'bg-white dark:bg-ink-surface text-stone-600 dark:text-slate-300 border border-stone-200/80 dark:border-ink-border hover:border-stone-400'
               }`}
             >
               {opt.label}
@@ -158,46 +169,44 @@ export const EventMemoryScreen: React.FC<EventMemoryScreenProps> = ({
         </div>
       </div>
 
-      {/* 4. SCANNABLE COMMITMENT LIST (Not full data tables) */}
+      {/* 4. UNIFIED COMMITMENT LEDGER (Editorial List, Not Cloned Boxes) */}
       <section className="space-y-2.5">
         <div className="flex items-center justify-between text-xs text-stone-500 font-mono">
           <span>Showing {filteredItems.length} Tracked Commitments</span>
           <span>Click any item for full audit trail</span>
         </div>
 
-        <div className="space-y-2.5">
+        <div className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border divide-y divide-stone-100 dark:divide-ink-border overflow-hidden shadow-subtle">
           {filteredItems.map((item) => (
             <div
               key={item.id}
               onClick={() => setActiveItem(item)}
-              className="group cursor-pointer rounded-xl bg-white dark:bg-ink-surface border border-stone-200/90 dark:border-ink-border p-4 shadow-subtle hover:border-stone-400/80 dark:hover:border-slate-700 transition-all active:scale-[0.99]"
+              className="group cursor-pointer p-4 hover:bg-stone-50/70 dark:hover:bg-ink-surfaceSubtle transition-colors"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-xs font-bold text-stone-900 dark:text-white">
-                      {item.ticker}
-                    </span>
-                    <span className="text-xs text-stone-500 truncate max-w-[150px]">
+                    {formatTicker(item.ticker)}
+                    <span className="text-xs text-stone-500 dark:text-slate-400 truncate max-w-[150px]">
                       {item.companyName}
                     </span>
                     {getStatusBadge(item.status)}
-                    <span className="text-[10px] text-stone-400 font-mono ml-auto">
+                    <span className="text-[10px] text-stone-400 dark:text-slate-500 font-mono ml-auto">
                       Goal: {item.milestoneDeadline}
                     </span>
                   </div>
 
-                  <h3 className="text-sm font-semibold text-stone-900 dark:text-white leading-snug group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">
+                  <h3 className="text-xs sm:text-sm font-semibold text-stone-900 dark:text-white leading-snug group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">
                     {item.title}
                   </h3>
 
                   <div className="text-xs text-stone-600 dark:text-slate-300 line-clamp-1 pt-0.5">
-                    <strong className="text-stone-800 dark:text-slate-200">Metric:</strong> {item.announcedMetric}
+                    <strong className="text-stone-800 dark:text-slate-200 font-medium">Target:</strong> {item.announcedMetric}
                   </div>
 
-                  <div className="flex items-center justify-between text-[11px] text-stone-400 font-mono pt-1">
+                  <div className="flex items-center justify-between text-[11px] text-stone-400 dark:text-slate-500 font-mono pt-1">
                     <span>Announced: {item.commitmentDate}</span>
-                    <span className="text-teal-700 dark:text-teal-400 font-sans font-medium">
+                    <span className="text-teal-700 dark:text-teal-400 font-sans font-medium flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
                       Inspect {item.timeline.length}-step trail &rarr;
                     </span>
                   </div>
@@ -209,7 +218,7 @@ export const EventMemoryScreen: React.FC<EventMemoryScreenProps> = ({
           ))}
 
           {filteredItems.length === 0 && (
-            <div className="rounded-xl border border-dashed border-stone-200 dark:border-ink-border p-8 text-center text-xs text-stone-500">
+            <div className="p-8 text-center text-xs text-stone-500 dark:text-slate-400">
               No corporate commitments found matching the filter criteria.
             </div>
           )}
