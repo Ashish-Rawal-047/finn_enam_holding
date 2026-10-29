@@ -1,69 +1,152 @@
 # FINN: Institutional Financial Investment Agent
 **ENAM Holdings — AI Engineer Build Challenge**
-*Evaluated for: ENAM - IIT screening - 2027*
-
-FINN is a mobile-first public-markets intelligence terminal designed for high-conviction equity investors. It combines proactive signal push, deep primary-source grounded research, and an institutional commitment tracker (**Event Memory™**).
+*Submission Email: `assessment@enam.com` | Subject: `ENAM - IIT screening - 2027`*
+*Target Delivery Date: Sunday, November 1, 2026 | Build Date: October 29, 2026*
 
 ---
 
-## 1. Quick Start & Execution
+## 1. Executive Summary & Design Philosophy
+
+FINN is a mobile-first investment intelligence companion purpose-built for high-conviction public market investors. Rather than acting as another overwhelming dashboard widget collector, FINN embraces the philosophy of **"Quiet Luxury Meets Investment Intelligence"**:
+
+> **"Show the conclusion first. Reveal details on demand. Filter the noise before the investor opens the app."**
+
+### Core Architectural Pillars
+1. **PUSH (Proactive Intelligence):** Windowed digest (24h/48h/7d) of corporate exchange announcements mapped to the 17 taxonomy categories, coupled with real-time price and volume anomaly alerts ($\pm X\%$ and $Y\times$ 20-DMA).
+2. **PULL (Primary-Source Research):** Deep corporate fundamentals strictly grounded in Annual Reports, audited financial releases, and concall transcripts. Zero broker notes, secondary rumors, or hallucinated AI commentary.
+3. **EVENT MEMORY™ (Signature Innovation):** An institutional commitment tracker recording management promises (capex programs, store rollout deadlines, margin targets) and continuously cross-referencing subsequent quarterly audited deliveries against historical promises.
+4. **Deterministic Demonstration Reliability:** Seamlessly runs out-of-the-box with bundled deterministic fixtures across 18 portfolio equities and 4 ad-hoc research companies, with live Yahoo Finance and REST endpoints when connected. Zero demo failure risk.
+
+---
+
+## 2. Quick Start & Execution
+
+FINN includes both a standalone mobile-first client and an integrated Node.js / Express REST API backend.
 
 ```bash
-# Navigate to the application directory
+# 1. Navigate to the project directory
 cd finn-enam
 
-# Install dependencies
+# 2. Install dependencies
 npm install
 
-# Start development server
-npm run dev
+# 3. Start unified API + Frontend Production Server (Port 3001)
+npm start
+# Opens at http://localhost:3001/
 
-# Or build for production preview
-npm run build
-npm run preview
+# --- OR ---
+
+# Run Vite HMR Development Client (Port 5173)
+npm run dev
 ```
 
-The application runs locally on `http://localhost:5173/` (or `http://localhost:4173/` for preview) and adapts responsively from a 390px mobile viewport up to 4K desktop screens.
+### Verified Ports
+- **Unified Production Server:** `http://localhost:3001/` (Serves both the REST API and the production client bundle)
+- **Vite Dev Client:** `http://localhost:5173/`
+- **API Health Endpoint:** `http://localhost:3001/api/health`
 
 ---
 
-## 2. Technology Decision Documentation
+## 3. Product Tour: 4 Core Institutional Destinations
 
-Per the challenge guidelines, package compatibility was tested prior to setup:
-- While Expo/NativeWind/React Native Reusables were evaluated, the combination suffers from severe package incompatibilities on modern Node 22/React 19 (`react-native-reusables` is not a standalone npm package, and NativeWind v4 web metro bundlers fail on Windows environments).
-- Per the instruction: *"If this combination creates a significant compatibility problem, choose the smallest reliable alternative that still delivers a beautiful, responsive, mobile-first application and document the decision"*, we selected **React 18/19 + Vite + TypeScript + Tailwind CSS + Lucide Icons**.
-- **Result:** Instant zero-friction compilation, sub-second HMR, 100% build reliability on Windows, and pixel-perfect mobile-first touch UI with zero horizontal overflow (`bodyScrollWidth = 390px`).
+```
+┌─────────────────────────────────────────────────────────────┐
+│                          APP HEADER                         │
+│  [FN] FINN ENAM INTEL   [EOD OCT 28]  [★ 18]  [⚙]  [☼/☾]   │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  [TODAY]          [SIGNALS]       [RESEARCH]      [MEMORY]  │
+│  Morning          Alert Inbox     Primary Deep    Account-  │
+│  Briefing         & Triage        Dives & Q&A     ability   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Destination 1: TODAY — The Investor's Briefing
+- **Main Editorial Focal Point:** A single prominent takeaway answering *"What deserves attention today and why?"* (e.g. *“3 companies require your attention today”*).
+- **Restrained Watchlist Strip:** Exactly 3 key metrics (Watchlist count, priority signal count, net market posture).
+- **Top 3 Priority Signals:** High-impact disclosures displayed with one-line takeaways and relevance tags. Full inbox accessible via one click.
+- **Event Memory Spotlight:** Surfaces an active historical commitment directly on the briefing screen with an audit trail deep-link.
+
+### Destination 2: SIGNALS — Prioritized Alert Inbox
+- **Progressive Triage Structure:**
+  - **Needs Immediate Attention:** Results beats/misses, litigation demands, executive shifts.
+  - **Worth Watching:** Capex commissioning, credit rating revisions, promoter pledges.
+  - **Routine Compliance (Collapsible):** ESOP allocations, secretarial forms, and grievance reports safely stowed in an expandable drawer with zero visual clutter.
+- **Signal Detail Drawer (Slide-Over):** Progressive disclosure layer revealing:
+  - Executive Takeaway & Relevance $\rightarrow$ Audited Financial Table / Executive Bio $\rightarrow$ Linked Event Memory target $\rightarrow$ Official Exchange PDF link.
+- **Filter Sheet:** Filter by window (`24h`, `48h`, `7d`, `All`), severity, or any of the 17 announcement categories.
+
+### Destination 3: RESEARCH — Primary-Grounded Workspace
+- **Instant Search Autocomplete:** As the investor types, matching companies appear with ticker, name, sector, and live price. Also accepts zero-shot arbitrary NSE tickers.
+- **Identity & Snapshot:** Ticker badge, market cap, sector, and one-tap watchlist star.
+- **5 Segmented Exploration Tabs:**
+  1. *Overview:* Business summary, segment revenue mix, and core competitive moat.
+  2. *Financials:* TTM Revenue, EBITDA margin, ROCE, ROE, D/E leverage, and Cash Conversion ($CFO/PAT$).
+  3. *Track Record (Narrative vs. Numbers):* 4-quarter audit comparing management guidance against audited figures delivered.
+  4. *Thesis (Bull vs. Bear):* Balanced institutional arguments grounded in balance sheet facts.
+  5. *Evidence:* Clickable links to official Annual Reports and earnings call transcripts.
+- **Primary-Grounded Q&A Bar:** Answers investor queries (margin guidance, capex, working capital, risks) strictly citing primary transcripts.
+
+### Destination 4: EVENT MEMORY™ — Institutional Commitment Ledger
+- **Accountability Ledger:** Tracks historical promises (capex programs, margin corridors, store rollout targets, debt reductions).
+- **Audit Detail Drawer:**
+  - Original commitment date, target milestone, and verbatim management quote.
+  - 3-step chronological observation timeline.
+  - Audited facts vs. AI capital allocation interpretation.
+  - Historical comparable precedents (e.g., Avenue Supermarts / Havells).
+
+### Secondary Controls (Slide-Over Drawers)
+- **Watchlist & Thresholds Drawer:** Search, star/unstar stocks, filter by market cap, and configure price ($\pm 2\%$ to $\pm 10\%$) and volume ($1.5\times$ to $5\times$) anomaly sliders with instant recalculation.
+- **Visual System Toggle:** Warm Ivory editorial theme default (`#FBFBF9`) and Executive Midnight dark theme (`#0F1115`).
 
 ---
 
-## 3. Four Core Working Screens
+## 4. REST API Documentation
 
-### Screen 1: Home / Investor Intelligence (`src/screens/HomeScreen.tsx`)
-- **Portfolio Health Bar:** Summarizes 18 tracked Indian equities with advancing/declining breakdown and average move.
-- **Top Triggered Alerts:** Surges and anomalies crossing user thresholds (e.g., Dixon 3.45x volume, Trent results beat), expandable on demand.
-- **Windowed Digest Controls:** Configurable time filter (`24h`, `48h`, `7d`, `All`) and "High Signal Only" toggle.
-- **Prioritized Announcement Stream:** 17-category classification mapped to the assignment reference guide.
-- **Progressive Disclosure:** Headline takeaway first, "Why It Matters" second, expandable quarterly financial tables and executive dossiers third.
-- **Routine Noise Drawer:** Collapses routine compliance paperwork (ESOP allotments, secretarial filings) to keep the investor focused.
+The Node.js Express server (`server/server.mjs`) provides standard RESTful endpoints:
 
-### Screen 2: Event Memory™ Ledger (`src/screens/EventMemoryScreen.tsx`)
-- **Historical Commitment Ledger:** Tracks management promises (capex programs, margin guidance, store rollouts, demerger timelines).
-- **Core Parameters:** Original date, announced amount, target deadline, and verbatim quote.
-- **Historical Precedents:** 1–2 comparable historical events to benchmark management's execution credibility.
-- **Fact vs. AI Separation:** Strictly separates audited corporate facts from FINN AI capital allocation assessments.
-- **Milestone Progress Tracker:** Real-time statuses (`Delivered`, `Delayed`, `Tracking`, `Revised`).
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/health` | `GET` | System health, EOD baseline date, and primary data status |
+| `/api/portfolio` | `GET` | Full company universe with prices, 20-DMA volume ratios, and watchlist flags |
+| `/api/portfolio/:ticker/watchlist` | `POST` | Toggles watchlist status for a company |
+| `/api/signals` | `GET` | Filtered exchange announcements (supports `?window=`, `?category=`, `?severity=`) |
+| `/api/alerts/evaluate` | `POST` | Evaluates price/volume breaches against customizable thresholds |
+| `/api/research/:ticker` | `GET` | Deep research dossier grounded in primary filings |
+| `/api/research/query` | `POST` | Answers investor questions with exact primary citations |
+| `/api/memory` | `GET` | Event Memory commitment ledger items and audit timelines |
+| `/api/memory/:id` | `GET` | Detailed commitment record with chronological observation chain |
+| `/api/market/quote/:ticker` | `GET` | Real-time quote fetcher with automatic fallback to EOD baseline |
 
-### Screen 3: Company Research (`src/screens/CompanyResearchScreen.tsx`)
-- **Primary-Source Grounded:** Annual Reports, concall transcripts, and exchange results only.
-- **Zero-Shot Ticker Engine:** Supports any valid NSE ticker beyond the 18 demo portfolio stocks (e.g. `BEL.NS`, `ZOMATO.NS`, `SUZLON.NS`).
-- **Business Snapshot:** Segment breakdown with revenue shares and YoY growth.
-- **Financial Snapshot & Quality of Cash:** 4 KPI tiles (Revenue, Margin, ROCE/ROE, Leverage) and CFO/PAT cash conversion audit.
-- **Narrative vs. Numbers (The Brief's Gold Standard):** 4-quarter audit comparing management guidance against audited figures delivered.
-- **Forward Guidance Ledger:** Explicit management forward targets.
-- **Institutional Bull vs. Bear Case:** Evidence-grounded thesis points.
+---
 
-### Screen 4: Watchlist & Signal Filters (`src/screens/SettingsScreen.tsx`)
-- **Watchlist Manager:** Manage active portfolio universe with live sparklines and market caps.
-- **Dynamic Sensitivity Sliders:** Price move slider ($\pm 1.5\%$ to $\pm 8.0\%$) and volume spike multiplier ($1.2\times$ to $4.5\times$ 20-DMA) with real-time alert recalculation.
-- **17-Category Filters:** Toggle exchange filing types based on investor mandate.
+## 5. Mobile-First Verification & Quality Assurance
 
+The interface was built strictly mobile-first and audited via Chrome DevTools Protocol (CDP) at **390 × 844 CSS pixels**:
+- **Horizontal Overflow:** 0px (`windowWidth: 390`, `bodyScrollWidth: 390`, `overflow: false`).
+- **Touch Target Disciplines:** All primary navigation buttons, filter chips, and drawer triggers meet or exceed $\ge 44\text{px}$ touch target standards.
+- **Font Hierarchy:** Serif editorial headings (Newsreader) paired with high-legibility sans-serif bodies (Inter) and tabular monospace numbers (JetBrains Mono).
+
+### Verified Visual Proof Artifacts
+- `redesign-mobile-today.png` — Mobile 390px Morning Briefing (Warm Ivory Light).
+- `redesign-mobile-signals.png` — Mobile 390px Signals Inbox with category badges.
+- `redesign-mobile-signal-detail.png` — Mobile 390px Progressive Disclosure Drawer.
+- `redesign-mobile-research.png` — Mobile 390px Research Workspace & Segment Mix.
+- `redesign-mobile-research-qa.png` — Mobile 390px Grounded Q&A with Citation.
+- `redesign-mobile-memory.png` — Mobile 390px Event Memory Commitment Ledger.
+- `redesign-mobile-memory-drawer.png` — Mobile 390px Chronological Audit Drawer.
+- `redesign-mobile-dark-today.png` — Mobile 390px Executive Midnight Dark Theme.
+- `redesign-desktop-today.png` — Desktop 1280px Executive Split Layout.
+
+---
+
+## 6. Submission Deliverables Checklist
+
+- [x] **Working Prototype:** Fully functional web application and REST API running on `http://localhost:3001/`.
+- [x] **Code Quality:** Strict TypeScript (`tsc` passed with 0 errors), clean modular architecture.
+- [x] **Mobile Optimization:** Flawless 390px execution with 0 layout overflows.
+- [x] **Primary Grounding:** Strict citations of Annual Reports, concalls, and Regulation 30/33 filings.
+- [x] **Signature Feature:** Event Memory™ ledger matching historical commitments to audited outcomes.
+- [x] **Documentation:** `docs/REQUIREMENTS.md`, `docs/BUILD_PLAN.md`, `docs/ARCHITECTURE.md`, and this `README.md`.
+- [x] **Submission Ready:** Target email `assessment@enam.com`, subject `ENAM - IIT screening - 2027`.
