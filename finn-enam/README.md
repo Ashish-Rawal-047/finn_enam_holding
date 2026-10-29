@@ -21,16 +21,33 @@ FINN is a mobile-first investment intelligence companion purpose-built for high-
 
 ## 2. Quick Start & Execution
 
-FINN includes both a standalone mobile-first client and an integrated Node.js / Express REST API backend.
+FINN includes both a **Native Mobile Application (React Native + Expo)** and an integrated **Node.js / Express REST API backend** with web fallback.
+
+### A. Run Native Mobile App (React Native & Expo — Port 8081)
 
 ```bash
-# 1. Navigate to the project directory
+# 1. Navigate to mobile app directory
+cd finn-enam/mobile
+
+# 2. Start Expo Metro bundler
+npm run web
+# Opens at http://localhost:8081/
+
+# --- OR ---
+# Start native iOS/Android development client
+npx expo start
+```
+
+### B. Run Unified API Server + Web Fallback (Port 3001)
+
+```bash
+# 1. Navigate to the project root
 cd finn-enam
 
 # 2. Install dependencies
 npm install
 
-# 3. Start unified API + Frontend Production Server (Port 3001)
+# 3. Start unified API + Web Server (Port 3001)
 npm start
 # Opens at http://localhost:3001/
 
@@ -41,7 +58,8 @@ npm run dev
 ```
 
 ### Verified Ports
-- **Unified Production Server:** `http://localhost:3001/` (Serves both the REST API and the production client bundle)
+- **Expo Mobile Web Preview:** `http://localhost:8081/` (Serves the genuine React Native mobile app)
+- **Unified Production Server:** `http://localhost:3001/` (Express REST API + Web fallback)
 - **Vite Dev Client:** `http://localhost:5173/`
 - **API Health Endpoint:** `http://localhost:3001/api/health`
 
@@ -128,16 +146,13 @@ The interface was built strictly mobile-first and audited via Chrome DevTools Pr
 - **Touch Target Disciplines:** All primary navigation buttons, filter chips, and drawer triggers meet or exceed $\ge 44\text{px}$ touch target standards.
 - **Font Hierarchy:** Serif editorial headings (Newsreader) paired with high-legibility sans-serif bodies (Inter) and tabular monospace numbers (JetBrains Mono).
 
-### Verified Visual Proof Artifacts
-- `redesign-mobile-today.png` — Mobile 390px Morning Briefing (Warm Ivory Light).
-- `redesign-mobile-signals.png` — Mobile 390px Signals Inbox with category badges.
-- `redesign-mobile-signal-detail.png` — Mobile 390px Progressive Disclosure Drawer.
-- `redesign-mobile-research.png` — Mobile 390px Research Workspace & Segment Mix.
-- `redesign-mobile-research-qa.png` — Mobile 390px Grounded Q&A with Citation.
-- `redesign-mobile-memory.png` — Mobile 390px Event Memory Commitment Ledger.
-- `redesign-mobile-memory-drawer.png` — Mobile 390px Chronological Audit Drawer.
-- `redesign-mobile-dark-today.png` — Mobile 390px Executive Midnight Dark Theme.
-- `redesign-desktop-today.png` — Desktop 1280px Executive Split Layout.
+### Verified Native Mobile Screenshots (Forest Green × Cream Design System)
+- `mobile/screenshots/mobile-screen1-today.png` — Mobile 390px Morning Briefing with serif focal headline, portfolio summary, top 3 priority signals.
+- `mobile/screenshots/mobile-screen2-signals.png` — Mobile 390px Categorized Signal Inbox (Needs Attention, Worth Watching, Routine compliance drawer).
+- `mobile/screenshots/mobile-screen3-research.png` — Mobile 390px Research Workspace with segment breakdown progress bars, 8-tile KPI grid, and external links.
+- `mobile/screenshots/mobile-screen4-memory.png` — Mobile 390px Event Memory Corporate Commitment Ledger with status chips, metric targets, and audit links.
+- `mobile/screenshots/mobile-screen5-settings.png` — Mobile 390px Settings Sheet with Watchlist manager, alert sensitivity chips, and 17 category toggles.
+- `mobile/screenshots/mobile-screen6-signal-detail.png` — Mobile 390px Signal Detail Modal with Executive Takeaway, regulatory filing references, and deep-link CTA.
 
 ---
 
