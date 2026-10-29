@@ -1,386 +1,282 @@
-import React, { useState } from 'react';
-import { Announcement, TriggeredAlert, AlertSettings, AnnouncementCategory } from '../types';
+import React, { useState, useMemo } from 'react';
+import { Announcement, TriggeredAlert, AlertSettings } from '../types';
+import { CATEGORY_LABELS } from '../data/alertSettings';
 import { Badge } from '../components/common/Badge';
-import { SignalDetailDrawer } from '../components/signals/SignalDetailDrawer';
-import { SignalFilterDrawer } from '../components/signals/SignalFilterDrawer';
-import { SlidersHorizontal, ChevronRight, ChevronDown, ChevronUp, Archive, Search } from 'lucide-react';
+import { Search, Sliders, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
 
 interface SignalsScreenProps {
   announcements: Announcement[];
   triggeredAlerts: TriggeredAlert[];
   settings: AlertSettings;
-  onChangeSettings: (settings: AlertSettings) => void;
-  onNavigateToResearch: (ticker: string) => void;
-  onNavigateToMemory?: (memoryId: string) => void;
+  onOpenSettings: () => void;
+  onSelectSignal: (item: Announcement | TriggeredAlert) => void;
 }
 
 export const SignalsScreen: React.FC<SignalsScreenProps> = ({
   announcements,
   triggeredAlerts,
   settings,
-  onChangeSettings,
-  onNavigateToResearch,
-  onNavigateToMemory,
+  onOpenSettings,
+  onSelectSignal,
 }) => {
-  const [selectedSignal, setSelectedSignal] = useState<Announcement | TriggeredAlert | null>(null);
-  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState<boolean>(false);
-  const [isRoutineOpen, setIsRoutineOpen] = useState<boolean>(false);
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isRoutineOpen, setIsRoutineOpen] = useState(false);
 
-  // Count active non-default filters
-  let activeFilterCount = 0;
-  if (settings.activeDigestWindow !== '24h') activeFilterCount++;
-  if (settings.minSeverity !== 'all') activeFilterCount++;
-  const enabledCatCount = Object.values(settings.enabledCategories).filter(Boolean).length;
-  if (enabledCatCount < 17) activeFilterCount++;
+  // Filter announcements according to settings & search
+  const filteredAnnouncements = useMemo(() => {
+    return announcements.filter((ann) => {
+      // Category filter check
+      if (settings.enabledCategories[ann.category] === false) return false;
 
-  // Reset all filters to default
-  const handleResetFilters = () => {
-    const allCategories = Object.keys(settings.enabledCategories).reduce((acc, cat) => {
-      acc[cat as AnnouncementCategory] = true;
-      return acc;
-    }, {} as Record<AnnouncementCategory, boolean>);
+      // Severity check
+      if (settings.minSeverity === 'critical_only' && ann.severity !== 'critical') return false;
+      if (
+        settings.minSeverity === 'high_only' &&
+        ann.severity !== 'critical' &&
+        ann.severity !== 'high'
+      )
+        return false;
 
-    onChangeSettings({
-      ...settings,
-      activeDigestWindow: '24h',
-      minSeverity: 'all',
-      enabledCategories: allCategories,
+      // Search query check
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        return (
+          ann.ticker.toLowerCase().includes(q) ||
+          ann.companyName.toLowerCase().includes(q) ||
+          ann.title.toLowerCase().includes(q) ||
+          ann.oneLineTakeaway.toLowerCase().includes(q)
+        );
+      }
+
+      return true;
     });
-  };
+  }, [announcements, settings, searchQuery]);
 
-  // Helper to split ticker into clean symbol and suffix
+  // Combine triggered alerts matching search
+  const filteredAlerts = useMemo(() => {
+    return triggeredAlerts.filter((alert) => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        return (
+          alert.ticker.toLowerCase().includes(q) ||
+          alert.companyName.toLowerCase().includes(q) ||
+          alert.headline.toLowerCase().includes(q) ||
+          alert.explanation.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [triggeredAlerts, searchQuery]);
+
+  // 3-Tier Categorization
+  const needsAttention = useMemo(() => {
+    const criticalAnnouncements = filteredAnnouncements.filter(
+      (a) => a.severity === 'critical' || a.severity === 'high'
+    );
+    const criticalAlerts = filteredAlerts.filter(
+      (a) => a.severity === 'critical' || a.severity === 'high'
+    );
+    return [...criticalAlerts, ...criticalAnnouncements];
+  }, [filteredAnnouncements, filteredAlerts]);
+
+  const worthWatching = useMemo(() => {
+    const mediumAnnouncements = filteredAnnouncements.filter(
+      (a) => a.severity === 'normal' && !a.isRoutine
+    );
+    const mediumAlerts = filteredAlerts.filter((a) => a.severity === 'medium');
+    return [...mediumAlerts, ...mediumAnnouncements];
+  }, [filteredAnnouncements, filteredAlerts]);
+
+  const routineCompliance = useMemo(() => {
+    return filteredAnnouncements.filter(
+      (a) => a.isRoutine || a.severity === 'routine'
+    );
+  }, [filteredAnnouncements]);
+
   const formatTicker = (ticker: string) => {
     const parts = ticker.split('.');
     return (
       <span className="font-mono text-xs">
-        <span className="font-bold text-stone-900 dark:text-white">{parts[0]}</span>
-        {parts[1] && <span className="text-[10px] text-stone-400 dark:text-slate-500">.{parts[1]}</span>}
+        <span className="font-bold text-ink dark:text-white">{parts[0]}</span>
+        {parts[1] && <span className="text-[10px] text-ink-muted">.{parts[1]}</span>}
       </span>
     );
   };
 
-  // Filter announcements based on settings
-  const filteredAnnouncements = announcements.filter((ann) => {
-    // Window filter
-    if (settings.activeDigestWindow === '24h' && (ann.timestamp.includes('2d') || ann.timestamp.includes('3d') || ann.timestamp.includes('4d'))) {
-      return false;
-    }
-    if (settings.activeDigestWindow === '48h' && (ann.timestamp.includes('3d') || ann.timestamp.includes('4d'))) {
-      return false;
-    }
+  const renderSignalRow = (item: Announcement | TriggeredAlert) => {
+    const isAlert = 'triggerMetric' in item;
+    const ticker = item.ticker;
+    const companyName = item.companyName;
+    const headline = isAlert ? item.headline : item.title;
+    const takeaway = isAlert ? item.explanation : item.oneLineTakeaway;
+    const time = item.timestamp;
+    const categoryLabel = !isAlert ? CATEGORY_LABELS[item.category]?.label || item.category : item.triggerMetric;
 
-    // Category filter
-    if (!settings.enabledCategories[ann.category]) {
-      return false;
-    }
+    return (
+      <div
+        key={item.id}
+        onClick={() => onSelectSignal(item)}
+        className="group relative cursor-pointer p-4 transition-colors hover:bg-cream-light/60 dark:hover:bg-ink-surfaceSubtle/60"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-baseline gap-2">
+            {formatTicker(ticker)}
+            <span className="text-xs text-ink-muted truncate max-w-[150px] sm:max-w-[220px]">
+              {companyName}
+            </span>
+          </div>
 
-    // Severity filter
-    if (settings.minSeverity === 'high_only' && (ann.severity === 'normal' || ann.severity === 'routine')) {
-      return false;
-    }
+          <div className="flex items-center gap-2">
+            <Badge
+              variant={isAlert ? 'amber' : item.severity === 'critical' ? 'red' : item.severity === 'high' ? 'forest' : 'sage'}
+              size="sm"
+            >
+              {categoryLabel}
+            </Badge>
+            <span className="font-mono text-[10px] text-ink-muted hidden sm:inline">
+              {time}
+            </span>
+          </div>
+        </div>
 
-    // Search query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const match = ann.ticker.toLowerCase().includes(q) || ann.title.toLowerCase().includes(q) || ann.companyName.toLowerCase().includes(q);
-      if (!match) return false;
-    }
+        <h3 className="mt-1 text-sm font-semibold tracking-tight text-ink dark:text-white line-clamp-1 group-hover:text-forest transition-colors">
+          {headline}
+        </h3>
 
-    return true;
-  });
+        <p className="mt-1 text-xs text-ink-muted line-clamp-2 leading-relaxed">
+          {takeaway}
+        </p>
 
-  // Filter market anomaly alerts by search query
-  const filteredAlerts = triggeredAlerts.filter((a) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return a.ticker.toLowerCase().includes(q) || a.headline.toLowerCase().includes(q) || a.companyName.toLowerCase().includes(q);
-  });
+        <div className="mt-2.5 flex items-center justify-between text-[11px]">
+          <span className="font-mono text-[10px] text-ink-muted sm:hidden">
+            {time}
+          </span>
+          <span className="hidden sm:inline" />
 
-  // Grouping into 3 calm categories:
-  // 1. Needs Attention (critical severity, results, major price/volume breaks)
-  const needsAttentionList = filteredAnnouncements.filter((a) => a.severity === 'critical');
-  // 2. Worth Watching (high/normal non-routine filings)
-  const worthWatchingList = filteredAnnouncements.filter((a) => !a.isRoutine && a.severity !== 'critical');
-  // 3. Routine Disclosures (routine paperwork)
-  const routineList = filteredAnnouncements.filter((a) => a.isRoutine);
-
-  const getCategoryBadgeVariant = (cat: AnnouncementCategory) => {
-    switch (cat) {
-      case 'results': return 'emerald';
-      case 'capex':
-      case 'M&A': return 'teal';
-      case 'management_change': return 'sky';
-      case 'litigation': return 'rose';
-      case 'fund_raise': return 'amber';
-      default: return 'neutral';
-    }
+          <span className="flex items-center gap-0.5 text-xs font-semibold text-forest dark:text-emerald group-hover:underline">
+            <span>Inspect</span>
+            <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+          </span>
+        </div>
+      </div>
+    );
   };
 
   return (
     <div className="space-y-6 pb-24 pt-2">
-      {/* Editorial Title & Context */}
-      <section className="space-y-1">
-        <h1 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-stone-900 dark:text-white">
-          Signals
-        </h1>
-        <p className="text-xs text-stone-600 dark:text-slate-300 max-w-lg leading-relaxed">
-          Proactively surfacing material company disclosures and verified market anomalies while filtering out administrative paperwork.
-        </p>
-      </section>
-
-      {/* Compact Filter & Search Bar */}
-      <div className="flex items-center gap-2.5">
-        <button
-          onClick={() => setIsFilterDrawerOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-stone-900 dark:bg-white text-white dark:text-stone-900 text-xs font-semibold hover:bg-stone-800 transition-colors flex-shrink-0"
-        >
-          <SlidersHorizontal size={13} />
-          <span>Filter Signals</span>
-          {activeFilterCount > 0 && (
-            <span className="h-4 min-w-[16px] px-1 rounded-full bg-teal-500 text-white text-[9px] font-mono font-bold flex items-center justify-center">
-              {activeFilterCount}
-            </span>
-          )}
-        </button>
-
+      {/* Search & Threshold Filter Row */}
+      <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
           <input
             type="text"
+            placeholder="Search signals, tickers, catalysts..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search signals by ticker or keyword..."
-            className="w-full rounded-xl bg-white dark:bg-ink-surface border border-stone-200/90 dark:border-ink-border py-2 pl-9 pr-3 text-xs text-stone-900 dark:text-white placeholder:text-stone-400 focus:outline-none focus:border-stone-400 transition-colors"
+            className="w-full rounded-xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface py-2.5 pl-9 pr-3 text-xs text-ink dark:text-white placeholder:text-ink-muted focus:border-forest focus:outline-none focus:ring-1 focus:ring-forest shadow-subtle"
           />
         </div>
+
+        <button
+          onClick={onOpenSettings}
+          className="flex h-10 items-center gap-1.5 rounded-xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface px-3 text-xs font-medium text-ink hover:bg-cream-light dark:hover:bg-ink-surfaceSubtle shadow-subtle transition-colors"
+        >
+          <Sliders size={14} className="text-forest" />
+          <span className="hidden sm:inline">Thresholds</span>
+        </button>
       </div>
 
-      {/* SECTION 1: NEEDS ATTENTION */}
-      <section className="space-y-2.5">
-        <div className="flex items-center justify-between border-b border-stone-200/70 dark:border-ink-border pb-1.5">
+      {/* Scope / Context Pill */}
+      <div className="text-[11px] text-ink-muted">
+        Window: <span className="font-bold text-ink dark:text-white">{settings.activeDigestWindow.toUpperCase()}</span> • Monitored Universe: <span className="font-bold text-ink dark:text-white">18 Equities</span>
+      </div>
+
+      {/* TIER 1: NEEDS ATTENTION */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="text-[11px] font-mono uppercase tracking-wider text-stone-800 dark:text-slate-200 font-semibold">
+            <span className="flex h-2 w-2 rounded-full bg-fin-red" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
               Needs Attention
             </h2>
-            <span className="text-[10px] font-mono text-stone-500 dark:text-slate-400">
-              ({filteredAlerts.length + needsAttentionList.length})
-            </span>
+            <Badge variant="red" size="sm">
+              {needsAttention.length}
+            </Badge>
           </div>
-          <span className="text-[10px] text-stone-400 dark:text-slate-500 font-mono">
-            High Severity
-          </span>
+          <span className="text-[10px] text-ink-muted">Immediate review</span>
         </div>
 
-        {/* Unified Editorial Container */}
-        <div className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border divide-y divide-stone-100 dark:divide-ink-border overflow-hidden shadow-subtle">
-          {/* A. Market Anomaly Triggers */}
-          {filteredAlerts.map((alert) => (
-            <div
-              key={alert.id}
-              onClick={() => setSelectedSignal(alert)}
-              className="group cursor-pointer p-4 hover:bg-stone-50/70 dark:hover:bg-ink-surfaceSubtle transition-colors"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    {formatTicker(alert.ticker)}
-                    <span className="text-xs text-stone-500 dark:text-slate-400 truncate max-w-[140px]">
-                      {alert.companyName}
-                    </span>
-                    <Badge variant={alert.severity === 'critical' ? 'rose' : 'amber'} size="xs">
-                      {alert.triggerMetric}
-                    </Badge>
-                    <span className="text-[10px] text-stone-400 dark:text-slate-500 font-mono ml-auto">
-                      {alert.timestamp}
-                    </span>
-                  </div>
-
-                  <h3 className="text-xs sm:text-sm font-semibold text-stone-900 dark:text-white mt-1 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">
-                    {alert.headline}
-                  </h3>
-
-                  <p className="text-xs text-stone-600 dark:text-slate-300 mt-1 line-clamp-2 leading-relaxed">
-                    {alert.explanation}
-                  </p>
-                </div>
-                <ChevronRight size={15} className="text-stone-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0 mt-1" />
-              </div>
+        <div className="rounded-2xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface overflow-hidden shadow-subtle divide-y divide-divider/70 dark:divide-ink-border">
+          {needsAttention.length === 0 ? (
+            <div className="p-5 text-center text-xs text-ink-muted">
+              No critical alerts or material guidance breaches.
             </div>
-          ))}
-
-          {/* B. Material Corporate Announcements */}
-          {needsAttentionList.map((ann) => (
-            <div
-              key={ann.id}
-              onClick={() => setSelectedSignal(ann)}
-              className="group cursor-pointer p-4 hover:bg-stone-50/70 dark:hover:bg-ink-surfaceSubtle transition-colors"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    {formatTicker(ann.ticker)}
-                    <span className="text-xs text-stone-500 dark:text-slate-400 truncate max-w-[140px]">
-                      {ann.companyName}
-                    </span>
-                    <Badge variant={getCategoryBadgeVariant(ann.category)} size="xs">
-                      {ann.category.toUpperCase()}
-                    </Badge>
-                    <span className="text-[10px] text-stone-400 dark:text-slate-500 font-mono ml-auto">
-                      {ann.timestamp}
-                    </span>
-                  </div>
-
-                  <h3 className="text-xs sm:text-sm font-semibold text-stone-900 dark:text-white leading-snug group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">
-                    {ann.title}
-                  </h3>
-
-                  <p className="text-xs text-stone-600 dark:text-slate-300 mt-1 line-clamp-2 leading-relaxed">
-                    {ann.oneLineTakeaway}
-                  </p>
-
-                  {/* Micro-Table Preview for Quarterly Results */}
-                  {ann.quarterlyResults && (
-                    <div className="mt-2.5 flex items-center gap-2 flex-wrap text-[11px] font-mono text-stone-600 dark:text-slate-300 bg-stone-50 dark:bg-ink-bg p-2 rounded-lg border border-stone-100 dark:border-ink-borderSubtle">
-                      <span>Rev: <strong>₹{ann.quarterlyResults.revenue.toLocaleString()} Cr</strong> (+{ann.quarterlyResults.revenueYoY}% YoY)</span>
-                      <span className="text-stone-300 dark:text-slate-600">•</span>
-                      <span>EBITDA Margin: <strong>{ann.quarterlyResults.ebitdaMargin}%</strong> (+{ann.quarterlyResults.ebitdaMarginChangeBps} bps)</span>
-                    </div>
-                  )}
-                </div>
-                <ChevronRight size={15} className="text-stone-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0 mt-1" />
-              </div>
-            </div>
-          ))}
-
-          {filteredAlerts.length === 0 && needsAttentionList.length === 0 && (
-            <div className="p-8 text-center text-xs text-stone-500 dark:text-slate-400">
-              No high-severity signals currently detected.
-            </div>
+          ) : (
+            needsAttention.map((item) => renderSignalRow(item))
           )}
         </div>
       </section>
 
-      {/* SECTION 2: WORTH WATCHING */}
-      <section className="space-y-2.5">
-        <div className="flex items-center justify-between border-b border-stone-200/70 dark:border-ink-border pb-1.5">
+      {/* TIER 2: WORTH WATCHING */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="text-[11px] font-mono uppercase tracking-wider text-stone-800 dark:text-slate-200 font-semibold">
+            <span className="flex h-2 w-2 rounded-full bg-fin-amber" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
               Worth Watching
             </h2>
-            <span className="text-[10px] font-mono text-stone-500 dark:text-slate-400">
-              ({worthWatchingList.length})
-            </span>
+            <Badge variant="sage" size="sm">
+              {worthWatching.length}
+            </Badge>
           </div>
-          <span className="text-[10px] text-stone-400 dark:text-slate-500 font-mono">
-            Moderate Impact
-          </span>
+          <span className="text-[10px] text-ink-muted">Operational catalysts</span>
         </div>
 
-        <div className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border divide-y divide-stone-100 dark:divide-ink-border overflow-hidden shadow-subtle">
-          {worthWatchingList.map((ann) => (
-            <div
-              key={ann.id}
-              onClick={() => setSelectedSignal(ann)}
-              className="group cursor-pointer p-4 hover:bg-stone-50/70 dark:hover:bg-ink-surfaceSubtle transition-colors"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    {formatTicker(ann.ticker)}
-                    <span className="text-xs text-stone-500 dark:text-slate-400 truncate max-w-[140px]">
-                      {ann.companyName}
-                    </span>
-                    <Badge variant={getCategoryBadgeVariant(ann.category)} size="xs">
-                      {ann.category.toUpperCase()}
-                    </Badge>
-                    <span className="text-[10px] text-stone-400 dark:text-slate-500 font-mono ml-auto">
-                      {ann.timestamp}
-                    </span>
-                  </div>
-
-                  <h3 className="text-xs sm:text-sm font-semibold text-stone-900 dark:text-white leading-snug group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">
-                    {ann.title}
-                  </h3>
-
-                  <p className="text-xs text-stone-600 dark:text-slate-300 mt-1 line-clamp-2 leading-relaxed">
-                    {ann.oneLineTakeaway}
-                  </p>
-                </div>
-                <ChevronRight size={15} className="text-stone-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0 mt-1" />
-              </div>
+        <div className="rounded-2xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface overflow-hidden shadow-subtle divide-y divide-divider/70 dark:divide-ink-border">
+          {worthWatching.length === 0 ? (
+            <div className="p-5 text-center text-xs text-ink-muted">
+              No medium-priority operational updates matching criteria.
             </div>
-          ))}
-
-          {worthWatchingList.length === 0 && (
-            <div className="p-8 text-center text-xs text-stone-500 dark:text-slate-400">
-              No moderate-impact signals in the selected digest window.
-            </div>
+          ) : (
+            worthWatching.map((item) => renderSignalRow(item))
           )}
         </div>
       </section>
 
-      {/* SECTION 3: ROUTINE DISCLOSURES (Collapsible Clean Drawer) */}
-      <section className="rounded-2xl bg-stone-50/80 dark:bg-ink-surfaceSubtle border border-stone-200/80 dark:border-ink-border p-3.5 space-y-2">
-        <button
+      {/* TIER 3: ROUTINE COMPLIANCE (COLLAPSIBLE DRAWER) */}
+      <section className="space-y-2">
+        <div
           onClick={() => setIsRoutineOpen(!isRoutineOpen)}
-          className="flex w-full items-center justify-between text-left"
+          className="flex cursor-pointer items-center justify-between rounded-xl border border-divider bg-white dark:bg-ink-surface px-4 py-3 text-xs shadow-subtle hover:bg-cream-light/60 transition-colors"
         >
           <div className="flex items-center gap-2">
-            <Archive size={14} className="text-stone-400" />
-            <span className="text-xs font-semibold text-stone-700 dark:text-slate-300">
-              Routine Compliance Disclosures
+            <span className="flex h-2 w-2 rounded-full bg-ink-muted" />
+            <span className="font-semibold text-ink dark:text-white">
+              Routine Compliance ({routineCompliance.length})
             </span>
-            <span className="text-[10px] font-mono text-stone-400 dark:text-slate-500">
-              ({routineList.length} filings safely stowed)
+            <span className="text-[10px] text-ink-muted">
+              Secretarial filings stowed away
             </span>
           </div>
-          {isRoutineOpen ? <ChevronUp size={15} className="text-stone-400" /> : <ChevronDown size={15} className="text-stone-400" />}
-        </button>
+
+          <button className="flex items-center gap-1 text-xs font-semibold text-forest dark:text-emerald">
+            <span>{isRoutineOpen ? 'Collapse' : 'Expand'}</span>
+            {isRoutineOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        </div>
 
         {isRoutineOpen && (
-          <div className="pt-2 border-t border-stone-200/60 dark:border-ink-border divide-y divide-stone-100 dark:divide-ink-border">
-            {routineList.map((ann) => (
-              <div
-                key={ann.id}
-                onClick={() => setSelectedSignal(ann)}
-                className="py-2.5 cursor-pointer hover:bg-stone-100/50 dark:hover:bg-ink-surface px-1.5 rounded transition-colors"
-              >
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    {formatTicker(ann.ticker)}
-                    <span className="text-stone-500 dark:text-slate-400 text-[11px] truncate max-w-[200px]">
-                      {ann.title}
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-stone-400 font-mono">
-                    {ann.timestamp}
-                  </span>
-                </div>
+          <div className="rounded-2xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface overflow-hidden shadow-subtle divide-y divide-divider/70 dark:divide-ink-border">
+            {routineCompliance.length === 0 ? (
+              <div className="p-5 text-center text-xs text-ink-muted">
+                No routine administrative disclosures in this cycle.
               </div>
-            ))}
+            ) : (
+              routineCompliance.map((item) => renderSignalRow(item))
+            )}
           </div>
         )}
       </section>
-
-      {/* Signal Detail Progressive Disclosure Drawer */}
-      <SignalDetailDrawer
-        isOpen={Boolean(selectedSignal)}
-        onClose={() => setSelectedSignal(null)}
-        signal={selectedSignal}
-        onNavigateToResearch={onNavigateToResearch}
-        onNavigateToMemory={onNavigateToMemory}
-      />
-
-      {/* Filter Bottom Sheet */}
-      <SignalFilterDrawer
-        isOpen={isFilterDrawerOpen}
-        onClose={() => setIsFilterDrawerOpen(false)}
-        settings={settings}
-        onChangeSettings={onChangeSettings}
-        activeFilterCount={activeFilterCount}
-        onResetFilters={handleResetFilters}
-      />
     </div>
   );
 };

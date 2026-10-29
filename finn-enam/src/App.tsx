@@ -124,7 +124,7 @@ export function App() {
   ];
 
   return (
-    <div className="min-h-screen w-full max-w-full bg-ivory-bg dark:bg-ink-bg text-ivory-text dark:text-ink-text antialiased flex flex-col transition-colors">
+    <div className="min-h-screen w-full max-w-full bg-cream dark:bg-ink-bg text-ink dark:text-ink-text antialiased flex flex-col transition-colors">
       {/* Editorial Header */}
       <AppHeader
         activeTab={activeTab}
@@ -145,9 +145,9 @@ export function App() {
       {/* Responsive Main Layout Container */}
       <div className="mx-auto flex w-full max-w-4xl flex-1 px-4 sm:px-6">
         {/* Desktop Sidebar Rail (Visible on >= 1024px) */}
-        <aside className="hidden lg:flex w-52 flex-col justify-between py-6 pr-6 border-r border-stone-200/70 dark:border-ink-border">
+        <aside className="hidden lg:flex w-52 flex-col justify-between py-6 pr-6 border-r border-divider dark:border-ink-border">
           <nav className="space-y-1">
-            <div className="text-[10px] uppercase font-mono tracking-wider text-stone-400 dark:text-slate-500 mb-2 px-2.5">
+            <div className="text-[10px] uppercase font-mono tracking-wider text-ink-muted mb-2 px-2.5">
               Destinations
             </div>
             {navItems.map((item) => {
@@ -159,8 +159,8 @@ export function App() {
                   onClick={() => setActiveTab(item.id)}
                   className={`flex w-full items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
                     isActive
-                      ? 'bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-semibold shadow-sm'
-                      : 'text-stone-600 hover:text-stone-900 dark:text-slate-400 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-ink-surface'
+                      ? 'bg-forest text-white shadow-sm font-semibold'
+                      : 'text-ink-muted hover:text-ink hover:bg-cream-dark dark:hover:bg-ink-surface'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
@@ -168,10 +168,10 @@ export function App() {
                     <span>{item.label}</span>
                   </div>
                   {item.badge && item.badge > 0 ? (
-                    <span className={`h-4 min-w-[16px] px-1.5 rounded-full font-mono text-[9px] font-medium flex items-center justify-center ${
+                    <span className={`h-4 min-w-[16px] px-1.5 rounded-full font-mono text-[9px] font-bold flex items-center justify-center ${
                       isActive
-                        ? 'bg-stone-700 text-white dark:bg-stone-200 dark:text-stone-900'
-                        : 'bg-stone-200 text-stone-700 dark:bg-slate-800 dark:text-slate-300'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-sage text-forest'
                     }`}>
                       {item.badge}
                     </span>
@@ -182,13 +182,13 @@ export function App() {
           </nav>
 
           {/* Sidebar Footer Info */}
-          <div className="rounded-xl bg-stone-100 dark:bg-ink-surfaceSubtle border border-stone-200/60 dark:border-ink-border p-3 space-y-1.5 text-[11px] text-stone-500 dark:text-slate-400">
-            <div className="font-semibold text-stone-800 dark:text-slate-200 flex items-center gap-1.5">
-              <ShieldCheck size={13} className="text-emerald-600" />
+          <div className="rounded-xl bg-white dark:bg-ink-surface border border-divider dark:border-ink-border p-3 space-y-1.5 text-[11px] text-ink-muted shadow-subtle">
+            <div className="font-semibold text-ink dark:text-white flex items-center gap-1.5">
+              <ShieldCheck size={14} className="text-forest dark:text-emerald" />
               Primary Discipline
             </div>
             <p className="leading-snug">
-              No broker notes or secondary news. Grounded strictly in exchange filings.
+              No broker notes or secondary rumors. Grounded strictly in exchange filings.
             </p>
           </div>
         </aside>
@@ -211,9 +211,11 @@ export function App() {
               announcements={MOCK_ANNOUNCEMENTS}
               triggeredAlerts={dynamicAlerts}
               settings={alertSettings}
-              onChangeSettings={setAlertSettings}
-              onNavigateToResearch={handleSelectCompanyForResearch}
-              onNavigateToMemory={handleNavigateToMemory}
+              onOpenSettings={() => {
+                setWatchlistDrawerTab('thresholds');
+                setIsWatchlistDrawerOpen(true);
+              }}
+              onSelectSignal={(sig) => setSelectedSignalDetail(sig)}
             />
           )}
 
@@ -237,74 +239,81 @@ export function App() {
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation (Fixed on screens < 1024px) */}
+      {/* Persistent Mobile Bottom Navigation Bar (< 1024px) */}
       <div className="lg:hidden">
         <BottomNav
           activeTab={activeTab}
-          onSelectTab={(tab) => {
-            setActiveTab(tab);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          }}
+          onSelectTab={setActiveTab}
           unreadSignalsCount={dynamicAlerts.length}
         />
       </div>
 
-      {/* Signal Detail Modal */}
-      <SignalDetailDrawer
-        isOpen={Boolean(selectedSignalDetail)}
-        onClose={() => setSelectedSignalDetail(null)}
-        signal={selectedSignalDetail}
-        onNavigateToResearch={handleSelectCompanyForResearch}
-        onNavigateToMemory={handleNavigateToMemory}
-      />
-
-      {/* Watchlist & Threshold Controls Drawer */}
+      {/* Slide-over Drawers */}
       <WatchlistDrawer
         isOpen={isWatchlistDrawerOpen}
         onClose={() => setIsWatchlistDrawerOpen(false)}
         initialTab={watchlistDrawerTab}
         companies={companies}
         onToggleWatchlist={handleToggleWatchlist}
-        onSelectCompanyForResearch={handleSelectCompanyForResearch}
+        onSelectCompanyForResearch={(ticker) => {
+          handleSelectCompanyForResearch(ticker);
+          setIsWatchlistDrawerOpen(false);
+        }}
         settings={alertSettings}
         onChangeSettings={setAlertSettings}
         activeAlerts={dynamicAlerts}
       />
 
-      {/* Data Provenance & Grounding Drawer */}
+      <SignalDetailDrawer
+        isOpen={!!selectedSignalDetail}
+        onClose={() => setSelectedSignalDetail(null)}
+        signal={selectedSignalDetail}
+        onInvestigateCompany={(ticker) => {
+          handleSelectCompanyForResearch(ticker);
+          setSelectedSignalDetail(null);
+        }}
+        onInspectMemory={(memId) => {
+          handleNavigateToMemory(memId);
+          setSelectedSignalDetail(null);
+        }}
+      />
+
+      {/* Provenance Verification Drawer */}
       <Drawer
         isOpen={isProvenanceOpen}
         onClose={() => setIsProvenanceOpen(false)}
-        title="Data Provenance & System Grounding"
-        subtitle="ENAM Holdings — AI Engineer Build Challenge"
-        footer={
-          <button
-            onClick={() => setIsProvenanceOpen(false)}
-            className="w-full rounded-xl bg-stone-900 dark:bg-white text-white dark:text-stone-900 py-2.5 text-xs font-semibold hover:bg-stone-800 transition-colors"
-          >
-            Acknowledge & Continue
-          </button>
-        }
+        title="Market Baseline & Data Provenance"
+        subtitle="Verification & Architecture"
+        maxWidth="md"
       >
-        <div className="space-y-3.5 text-xs text-stone-700 dark:text-slate-300 leading-relaxed">
-          <div className="rounded-xl bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-900/40 p-3.5 text-teal-900 dark:text-teal-200 space-y-1">
-            <span className="font-bold text-teal-950 dark:text-teal-300 font-mono text-[11px] block">
-              DEMONSTRATION FIXTURE DATA
-            </span>
-            <p className="text-xs">{DEMO_DATA_DISCLAIMER}</p>
+        <div className="space-y-4 text-xs text-ink dark:text-ink-light">
+          <div className="rounded-xl bg-sage/50 p-3.5 border border-divider">
+            <div className="flex items-center gap-2 text-forest font-bold text-xs">
+              <ShieldCheck size={16} />
+              <span>Grounding Standard</span>
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-ink-muted">
+              Every takeaway, financial table, and Event Memory commitment audit in FINN is linked to primary official filings published on BSE and NSE archives.
+            </p>
           </div>
 
-          <div className="space-y-2">
-            <h4 className="font-semibold text-stone-900 dark:text-white">Strict Financial Disciplines:</h4>
-            <p>
-              • <strong>Primary Source Disclosures:</strong> Numbers, percentages, and quotes are strictly sourced from official company filings (Annual Reports, Quarterly Exchange Form 10-Q equivalents, concall audio transcripts).
-            </p>
-            <p>
-              • <strong>No Broker or News Distortion:</strong> Broker recommendation notes and secondary press commentary are excluded to prevent noisy bias.
-            </p>
-            <p>
-              • <strong>Event Memory Subsystem:</strong> Evaluated commitments explicitly separate audited corporate delivery from model-generated capital allocation interpretations.
-            </p>
+          <div className="space-y-2 text-[11px]">
+            <div className="flex justify-between py-1.5 border-b border-divider">
+              <span className="text-ink-muted">End-of-Day Baseline</span>
+              <span className="font-mono font-bold text-forest">October 28, 2026 (Closing Bhavcopy)</span>
+            </div>
+            <div className="flex justify-between py-1.5 border-b border-divider">
+              <span className="text-ink-muted">Monitored Portfolio</span>
+              <span className="font-mono font-bold">18 NSE/BSE Equities</span>
+            </div>
+            <div className="flex justify-between py-1.5 border-b border-divider">
+              <span className="text-ink-muted">Event Memory Ledger</span>
+              <span className="font-mono font-bold text-forest">6 Active Corporate Pledges</span>
+            </div>
+          </div>
+
+          <div className="p-3 bg-cream-dark rounded-lg text-[10px] text-ink-muted leading-normal">
+            {DEMO_DATA_DISCLAIMER}
           </div>
         </div>
       </Drawer>

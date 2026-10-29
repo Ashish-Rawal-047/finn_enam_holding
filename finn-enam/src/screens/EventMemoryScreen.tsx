@@ -16,7 +16,6 @@ export const EventMemoryScreen: React.FC<EventMemoryScreenProps> = ({
   onNavigateToResearch,
 }) => {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeItem, setActiveItem] = useState<EventMemoryItem | null>(() => {
     if (initialActiveId) {
@@ -25,7 +24,7 @@ export const EventMemoryScreen: React.FC<EventMemoryScreenProps> = ({
     return null;
   });
 
-  // Keep activeItem in sync if parent passes a new initialActiveId (e.g. from Today spotlight or Signal link)
+  // Keep activeItem in sync if parent passes a new initialActiveId
   useEffect(() => {
     if (initialActiveId) {
       const match = memoryItems.find((m) => m.id === initialActiveId);
@@ -36,198 +35,205 @@ export const EventMemoryScreen: React.FC<EventMemoryScreenProps> = ({
   }, [initialActiveId, memoryItems]);
 
   const statusOptions: Array<{ id: string; label: string }> = [
-    { id: 'all', label: 'All Status' },
+    { id: 'all', label: 'All Statuses' },
     { id: 'delivered', label: 'Delivered' },
     { id: 'pending', label: 'Tracking' },
     { id: 'delayed', label: 'Delayed' },
   ];
 
-  const categoryOptions: Array<{ id: string; label: string }> = [
-    { id: 'all', label: 'All Domains' },
-    { id: 'capacity', label: 'Capacity' },
-    { id: 'capex', label: 'Capex' },
-    { id: 'margin', label: 'Margin' },
-    { id: 'revenue', label: 'Revenue' },
-  ];
-
   const filteredItems = memoryItems.filter((item) => {
     const matchesStatus = selectedStatus === 'all' || item.status === selectedStatus;
-    const matchesCategory = selectedCategory === 'all' || item.category === selectedCategory;
     const matchesSearch =
       !searchQuery.trim() ||
       item.ticker.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.companyName.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesStatus && matchesCategory && matchesSearch;
+      item.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.announcedMetric.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesSearch;
   });
 
-  const deliveredCount = memoryItems.filter((i) => i.status === 'delivered').length;
-  const pendingCount = memoryItems.filter((i) => i.status === 'pending').length;
-  const delayedCount = memoryItems.filter((i) => i.status === 'delayed').length;
+  // Accountability Metrics
+  const totalCount = memoryItems.length;
+  const deliveredCount = memoryItems.filter((m) => m.status === 'delivered').length;
+  const delayedCount = memoryItems.filter((m) => m.status === 'delayed').length;
+  const inFlightCount = memoryItems.filter((m) => m.status === 'pending' || m.status === 'revised').length;
+  const deliveryRate = totalCount > 0 ? Math.round((deliveredCount / totalCount) * 100) : 0;
 
   const getStatusBadge = (status: CommitmentStatus) => {
     switch (status) {
       case 'delivered':
-        return <Badge variant="emerald" size="xs" dot>Delivered</Badge>;
+        return <Badge variant="forest" size="sm" dot>DELIVERED</Badge>;
       case 'delayed':
-        return <Badge variant="rose" size="xs" dot>Delayed</Badge>;
+        return <Badge variant="red" size="sm" dot>DELAYED</Badge>;
       case 'revised':
-        return <Badge variant="amber" size="xs" dot>Revised</Badge>;
+        return <Badge variant="amber" size="sm" dot>REVISED</Badge>;
       case 'pending':
       default:
-        return <Badge variant="teal" size="xs" dot>Tracking</Badge>;
+        return <Badge variant="sage" size="sm" dot>TRACKING</Badge>;
     }
   };
 
-  // Helper to split ticker into clean symbol and suffix
   const formatTicker = (ticker: string) => {
     const parts = ticker.split('.');
     return (
-      <span className="font-mono text-xs">
-        <span className="font-bold text-stone-900 dark:text-white">{parts[0]}</span>
-        {parts[1] && <span className="text-[10px] text-stone-400 dark:text-slate-500">.{parts[1]}</span>}
+      <span className="font-mono text-xs font-bold text-ink dark:text-white">
+        {parts[0]}
+        {parts[1] && <span className="text-[10px] font-normal text-ink-muted">.{parts[1]}</span>}
       </span>
     );
   };
 
   return (
-    <div className="space-y-5 pb-24 pt-2">
-      {/* 1. EDITORIAL TITLE & PROMISE */}
-      <section className="space-y-1">
-        <div className="flex items-center gap-1.5 text-xs text-teal-800 dark:text-teal-400 font-mono font-semibold">
-          <History size={14} />
-          <span>FINN Institutional Ledger</span>
+    <div className="space-y-6 pb-24 pt-2">
+      {/* 1. TOP ACCOUNTABILITY SUMMARY BANNER */}
+      <div className="rounded-2xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface p-4 sm:p-5 shadow-subtle space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-forest dark:text-emerald text-[11px] font-bold">
+              <History size={14} />
+              <span className="uppercase tracking-wider font-mono">Signature Innovation</span>
+            </div>
+            <h2 className="text-lg font-bold text-ink dark:text-white tracking-tight">
+              Corporate Commitment Ledger
+            </h2>
+          </div>
+
+          <div className="text-center rounded-xl bg-sage px-3 py-1.5 border border-sage-dark">
+            <div className="font-mono text-xl font-bold text-forest">{deliveryRate}%</div>
+            <div className="text-[9px] font-mono text-forest uppercase tracking-wider">Delivered</div>
+          </div>
         </div>
-        <h1 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-stone-900 dark:text-white">
-          Event Memory™
-        </h1>
-        <p className="text-xs text-stone-600 dark:text-slate-300 max-w-lg leading-relaxed">
-          Holding corporate management accountable by matching historical promises from concalls and filings against subsequent audited delivery.
+
+        <p className="text-xs text-ink-muted leading-relaxed">
+          Cross-referencing historical management concall guidance, capex budgets, and store expansion targets against subsequent audited exchange prints.
         </p>
-      </section>
 
-      {/* 2. RESTRAINED PROGRESS STRIP (3 Metrics) */}
-      <section className="rounded-xl bg-white dark:bg-ink-surface border border-stone-200/90 dark:border-ink-border p-3.5 shadow-subtle">
-        <div className="flex items-center justify-between text-center divide-x divide-stone-200/80 dark:divide-ink-border text-xs">
-          <div className="flex-1 px-2">
-            <span className="text-[10px] font-mono uppercase text-stone-400 block">Total Commitments</span>
-            <span className="text-sm font-bold text-stone-900 dark:text-white font-mono mt-0.5 block">{memoryItems.length}</span>
+        <div className="grid grid-cols-4 gap-2 border-t border-divider pt-3 text-center text-xs">
+          <div>
+            <div className="font-mono text-sm font-bold text-ink dark:text-white">{totalCount}</div>
+            <span className="text-[10px] text-ink-muted">Pledges</span>
           </div>
-          <div className="flex-1 px-2">
-            <span className="text-[10px] font-mono uppercase text-emerald-600 dark:text-emerald-400 block">Delivered on Time</span>
-            <span className="text-sm font-bold text-stone-900 dark:text-white font-mono mt-0.5 block">{deliveredCount}</span>
+          <div>
+            <div className="font-mono text-sm font-bold text-forest dark:text-emerald">{deliveredCount}</div>
+            <span className="text-[10px] text-ink-muted">Fulfilled</span>
           </div>
-          <div className="flex-1 px-2">
-            <span className="text-[10px] font-mono uppercase text-teal-600 dark:text-teal-400 block">Actively Tracked</span>
-            <span className="text-sm font-bold text-stone-900 dark:text-white font-mono mt-0.5 block">{pendingCount}</span>
+          <div>
+            <div className="font-mono text-sm font-bold text-fin-red">{delayedCount}</div>
+            <span className="text-[10px] text-ink-muted">Delayed</span>
           </div>
-          <div className="flex-1 px-2">
-            <span className="text-[10px] font-mono uppercase text-rose-600 dark:text-rose-400 block">Delayed</span>
-            <span className="text-sm font-bold text-stone-900 dark:text-white font-mono mt-0.5 block">{delayedCount}</span>
+          <div>
+            <div className="font-mono text-sm font-bold text-ink dark:text-white">{inFlightCount}</div>
+            <span className="text-[10px] text-ink-muted">In-Flight</span>
           </div>
-        </div>
-      </section>
-
-      {/* 3. SEARCH & RESTRAINED FILTERS */}
-      <div className="space-y-2">
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search tracked commitments by company or target..."
-            className="w-full rounded-xl bg-white dark:bg-ink-surface border border-stone-200/90 dark:border-ink-border py-2 pl-9 pr-3 text-xs text-stone-900 dark:text-white placeholder:text-stone-400 focus:outline-none focus:border-stone-400 transition-colors"
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] no-scrollbar">
-          {statusOptions.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => setSelectedStatus(opt.id)}
-              className={`rounded-lg px-2.5 py-1 font-medium transition-colors whitespace-nowrap ${
-                selectedStatus === opt.id
-                  ? 'bg-stone-900 dark:bg-white text-white dark:text-stone-900 font-semibold'
-                  : 'bg-white dark:bg-ink-surface text-stone-600 dark:text-slate-300 border border-stone-200/80 dark:border-ink-border hover:border-stone-400'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-          {categoryOptions.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => setSelectedCategory(opt.id)}
-              className={`rounded-lg px-2.5 py-1 transition-colors whitespace-nowrap text-stone-500 hover:text-stone-800 ${
-                selectedCategory === opt.id ? 'font-bold text-stone-900 dark:text-white' : ''
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
         </div>
       </div>
 
-      {/* 4. UNIFIED COMMITMENT LEDGER (Editorial List, Not Cloned Boxes) */}
-      <section className="space-y-2.5">
-        <div className="flex items-center justify-between text-xs text-stone-500 font-mono">
-          <span>Showing {filteredItems.length} Tracked Commitments</span>
-          <span>Click any item for full audit trail</span>
+      {/* 2. SEARCH & FILTER CHIPS */}
+      <div className="space-y-2">
+        <div className="relative">
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
+          <input
+            type="text"
+            placeholder="Filter commitments by ticker, keyword, capex..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface py-2.5 pl-9 pr-3 text-xs text-ink dark:text-white placeholder:text-ink-muted focus:border-forest focus:outline-none focus:ring-1 focus:ring-forest shadow-subtle"
+          />
         </div>
 
-        <div className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border divide-y divide-stone-100 dark:divide-ink-border overflow-hidden shadow-subtle">
-          {filteredItems.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => setActiveItem(item)}
-              className="group cursor-pointer p-4 hover:bg-stone-50/70 dark:hover:bg-ink-surfaceSubtle transition-colors"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {formatTicker(item.ticker)}
-                    <span className="text-xs text-stone-500 dark:text-slate-400 truncate max-w-[150px]">
-                      {item.companyName}
-                    </span>
-                    {getStatusBadge(item.status)}
-                    <span className="text-[10px] text-stone-400 dark:text-slate-500 font-mono ml-auto">
-                      Goal: {item.milestoneDeadline}
-                    </span>
+        {/* Status Filter Chips */}
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-none pb-1">
+          {statusOptions.map((opt) => {
+            const isSelected = selectedStatus === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => setSelectedStatus(opt.id)}
+                className={`rounded-lg px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors border ${
+                  isSelected
+                    ? 'bg-forest text-white border-forest shadow-sm'
+                    : 'bg-white border-divider text-ink-muted hover:text-ink hover:bg-cream-light'
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. COMMITMENT LEDGER LIST */}
+      <section className="space-y-2.5">
+        <div className="flex items-center justify-between text-xs text-ink-muted">
+          <span className="font-semibold text-ink dark:text-white">
+            Audited Pledges ({filteredItems.length})
+          </span>
+          <span className="text-[10px]">Tap card for 3-step audit timeline</span>
+        </div>
+
+        <div className="space-y-3">
+          {filteredItems.length === 0 ? (
+            <div className="rounded-2xl border border-divider bg-white p-6 text-center text-xs text-ink-muted">
+              No commitments match the active filter criteria.
+            </div>
+          ) : (
+            filteredItems.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => setActiveItem(item)}
+                className="group cursor-pointer rounded-2xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface p-4 sm:p-5 shadow-subtle hover:border-forest/40 transition-all space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      {formatTicker(item.ticker)}
+                      <span className="text-xs text-ink-muted">{item.companyName}</span>
+                    </div>
+                    <h3 className="text-sm font-semibold text-ink dark:text-white mt-1 group-hover:text-forest transition-colors">
+                      {item.title}
+                    </h3>
                   </div>
 
-                  <h3 className="text-xs sm:text-sm font-semibold text-stone-900 dark:text-white leading-snug group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">
-                    {item.title}
-                  </h3>
+                  {getStatusBadge(item.status)}
+                </div>
 
-                  <div className="text-xs text-stone-600 dark:text-slate-300 line-clamp-1 pt-0.5">
-                    <strong className="text-stone-800 dark:text-slate-200 font-medium">Target:</strong> {item.announcedMetric}
+                {/* Metric Callout Box */}
+                <div className="rounded-xl bg-cream/70 dark:bg-ink-surfaceSubtle p-3 border border-divider space-y-1 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-ink-muted">Promised Target:</span>
+                    <span className="font-mono font-bold text-ink dark:text-white">{item.announcedMetric}</span>
                   </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-stone-400 dark:text-slate-500 font-mono pt-1">
-                    <span>Announced: {item.commitmentDate}</span>
-                    <span className="text-teal-700 dark:text-teal-400 font-sans font-medium flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-                      Inspect {item.timeline.length}-step trail &rarr;
-                    </span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-ink-muted">Milestone Deadline:</span>
+                    <span className="font-mono font-bold text-forest dark:text-emerald">{item.milestoneDeadline}</span>
                   </div>
                 </div>
 
-                <ChevronRight size={16} className="text-stone-400 group-hover:translate-x-0.5 transition-transform flex-shrink-0 mt-2" />
-              </div>
-            </div>
-          ))}
+                {/* Facts Summary */}
+                <p className="text-xs text-ink-muted leading-relaxed line-clamp-2">
+                  {item.factsSummary}
+                </p>
 
-          {filteredItems.length === 0 && (
-            <div className="p-8 text-center text-xs text-stone-500 dark:text-slate-400">
-              No corporate commitments found matching the filter criteria.
-            </div>
+                {/* Card Footer */}
+                <div className="flex items-center justify-between border-t border-divider pt-2 text-[11px] text-ink-muted">
+                  <span className="font-mono text-[10px] truncate max-w-[220px]">
+                    {item.sourceDoc} • Declared {item.commitmentDate}
+                  </span>
+
+                  <span className="flex items-center gap-0.5 text-xs font-semibold text-forest dark:text-emerald group-hover:underline">
+                    <span>Audit history</span>
+                    <ChevronRight size={13} />
+                  </span>
+                </div>
+              </div>
+            ))
           )}
         </div>
       </section>
 
-      {/* Detail Drawer for full chronological timeline */}
+      {/* Detail Drawer */}
       <EventMemoryDetailDrawer
-        isOpen={Boolean(activeItem)}
+        isOpen={!!activeItem}
         onClose={() => setActiveItem(null)}
         item={activeItem}
         onNavigateToResearch={onNavigateToResearch}

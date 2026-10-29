@@ -34,14 +34,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     },
     {
       id: 'memory' as NavigationTab,
-      label: 'Event Memory',
+      label: 'Memory',
       icon: History,
       badge: 0,
     },
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-stone-200/80 dark:border-ink-border bg-ivory-bg/95 dark:bg-ink-bg/95 backdrop-blur-md px-3 py-1 safe-area-pb transition-colors">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-divider bg-white/95 dark:bg-ink-surface/95 backdrop-blur-md px-3 py-1 safe-area-pb transition-colors shadow-float">
       <div className="mx-auto flex max-w-md items-center justify-around">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
@@ -51,25 +51,23 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <button
               key={tab.id}
               onClick={() => onSelectTab(tab.id)}
-              className={`relative flex min-h-[48px] flex-1 flex-col items-center justify-center py-1 transition-all select-none active:scale-[0.97] ${
+              className={`relative flex min-h-[50px] flex-1 flex-col items-center justify-center py-1 transition-all select-none active:scale-[0.97] ${
                 isActive
-                  ? 'text-stone-900 dark:text-white font-semibold'
-                  : 'text-stone-400 hover:text-stone-600 dark:text-slate-400 dark:hover:text-slate-200'
+                  ? 'text-forest dark:text-emerald font-semibold'
+                  : 'text-ink-muted hover:text-ink dark:text-ink-subtle dark:hover:text-ink-light'
               }`}
             >
               <div className="relative">
-                <Icon size={19} strokeWidth={isActive ? 2.2 : 1.7} />
+                <Icon size={19} strokeWidth={isActive ? 2.3 : 1.8} />
                 {tab.badge > 0 && (
-                  <span className="absolute -right-2 -top-0.5 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-stone-800 dark:bg-stone-200 px-1 text-[8px] font-medium text-white dark:text-stone-900 font-mono">
+                  <span className="absolute -top-1 -right-2.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-forest text-[9px] font-mono font-bold text-white px-1 shadow-sm">
                     {tab.badge}
                   </span>
                 )}
               </div>
-              <span className={`text-[10px] mt-1 tracking-tight transition-colors ${isActive ? 'font-semibold' : 'font-medium'}`}>
-                {tab.label}
-              </span>
+              <span className="mt-1 text-[11px] tracking-tight">{tab.label}</span>
               {isActive && (
-                <span className="absolute bottom-0.5 h-1 w-1 rounded-full bg-stone-900 dark:bg-teal-400" />
+                <span className="absolute bottom-1 h-1 w-5 rounded-full bg-forest dark:bg-emerald" />
               )}
             </button>
           );

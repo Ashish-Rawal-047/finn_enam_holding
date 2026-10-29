@@ -1,6 +1,16 @@
 import React from 'react';
 
-export type BadgeVariant = 'emerald' | 'teal' | 'rose' | 'amber' | 'sky' | 'neutral' | 'subtle';
+export type BadgeVariant =
+  | 'default'
+  | 'forest'
+  | 'emerald'
+  | 'sage'
+  | 'amber'
+  | 'red'
+  | 'neutral'
+  | 'teal'
+  | 'sky'
+  | 'rose';
 
 interface BadgeProps {
   children: React.ReactNode;
@@ -12,43 +22,70 @@ interface BadgeProps {
 
 export const Badge: React.FC<BadgeProps> = ({
   children,
-  variant = 'neutral',
-  size = 'sm',
+  variant = 'default',
+  size = 'md',
   className = '',
   dot = false,
 }) => {
-  const variantStyles: Record<BadgeVariant, string> = {
-    emerald: 'bg-emerald-50 text-emerald-800 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40',
-    teal: 'bg-teal-50 text-teal-800 border-teal-200/80 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-800/40',
-    rose: 'bg-rose-50 text-rose-800 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/40',
-    amber: 'bg-amber-50 text-amber-800 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/40',
-    sky: 'bg-sky-50 text-sky-800 border-sky-200/80 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/40',
-    neutral: 'bg-stone-100 text-stone-700 border-stone-200 dark:bg-slate-800/70 dark:text-slate-300 dark:border-slate-700/60',
-    subtle: 'bg-transparent text-stone-600 border-stone-200/70 dark:text-slate-400 dark:border-slate-700/50',
+  const sizeClasses = {
+    xs: 'text-[9px] px-1.5 py-0.2',
+    sm: 'text-[9px] px-1.5 py-0.5',
+    md: 'text-[10px] px-2 py-0.5',
   };
 
-  const sizeStyles = {
-    xs: 'text-[10px] px-1.5 py-0.2 leading-tight font-medium',
-    sm: 'text-[11px] px-2 py-0.5 leading-tight font-medium',
-    md: 'text-xs px-2.5 py-1 leading-normal font-medium',
+  const variantClasses: Record<BadgeVariant, { bg: string; dotColor?: string }> = {
+    default: {
+      bg: 'bg-sage text-forest font-semibold border border-divider',
+      dotColor: 'bg-forest',
+    },
+    forest: {
+      bg: 'bg-forest text-white font-medium shadow-sm',
+      dotColor: 'bg-emerald-300',
+    },
+    emerald: {
+      bg: 'bg-sage text-forest font-semibold border border-sage-dark',
+      dotColor: 'bg-emerald',
+    },
+    sage: {
+      bg: 'bg-sage text-forest font-medium border border-divider',
+      dotColor: 'bg-forest',
+    },
+    amber: {
+      bg: 'bg-fin-amberBg text-fin-amber font-semibold border border-fin-amber/30 dark:bg-fin-amberBgDark',
+      dotColor: 'bg-fin-amber',
+    },
+    red: {
+      bg: 'bg-fin-redBg text-fin-red font-semibold border border-fin-red/30 dark:bg-fin-redBgDark',
+      dotColor: 'bg-fin-red',
+    },
+    rose: {
+      bg: 'bg-fin-redBg text-fin-red font-semibold border border-fin-red/30 dark:bg-fin-redBgDark',
+      dotColor: 'bg-fin-red',
+    },
+    teal: {
+      bg: 'bg-sage text-forest font-semibold border border-sage-dark',
+      dotColor: 'bg-forest',
+    },
+    sky: {
+      bg: 'bg-sage text-forest font-medium border border-divider',
+      dotColor: 'bg-forest',
+    },
+    neutral: {
+      bg: 'bg-cream-dark text-ink-muted border border-divider',
+      dotColor: 'bg-ink-muted',
+    },
   };
 
-  const dotColors: Record<BadgeVariant, string> = {
-    emerald: 'bg-emerald-500',
-    teal: 'bg-teal-500',
-    rose: 'bg-rose-500',
-    amber: 'bg-amber-500',
-    sky: 'bg-sky-500',
-    neutral: 'bg-stone-400 dark:bg-slate-400',
-    subtle: 'bg-stone-400 dark:bg-slate-400',
-  };
+  const currentVariant = variantClasses[variant] || variantClasses.default;
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border tracking-normal transition-colors font-sans ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-md font-sans tracking-tight transition-colors ${sizeClasses[size]} ${currentVariant.bg} ${className}`}
     >
-      {dot && <span className={`w-1.5 h-1.5 rounded-full ${dotColors[variant]}`} />}
-      {children}
+      {dot && currentVariant.dotColor && (
+        <span className={`h-1.5 w-1.5 rounded-full ${currentVariant.dotColor} shrink-0`} />
+      )}
+      <span>{children}</span>
     </span>
   );
 };

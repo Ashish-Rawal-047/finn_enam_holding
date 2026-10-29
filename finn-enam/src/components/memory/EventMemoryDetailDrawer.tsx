@@ -2,7 +2,7 @@ import React from 'react';
 import { EventMemoryItem, CommitmentStatus } from '../../types';
 import { Drawer } from '../common/Drawer';
 import { Badge } from '../common/Badge';
-import { History, ShieldCheck, Sparkles } from 'lucide-react';
+import { ShieldCheck, Sparkles } from 'lucide-react';
 
 interface EventMemoryDetailDrawerProps {
   isOpen: boolean;
@@ -22,14 +22,14 @@ export const EventMemoryDetailDrawer: React.FC<EventMemoryDetailDrawerProps> = (
   const getStatusBadge = (status: CommitmentStatus) => {
     switch (status) {
       case 'delivered':
-        return <Badge variant="emerald" dot>Delivered</Badge>;
+        return <Badge variant="forest" size="sm" dot>DELIVERED</Badge>;
       case 'delayed':
-        return <Badge variant="rose" dot>Delayed</Badge>;
+        return <Badge variant="red" size="sm" dot>DELAYED</Badge>;
       case 'revised':
-        return <Badge variant="amber" dot>Revised</Badge>;
+        return <Badge variant="amber" size="sm" dot>REVISED</Badge>;
       case 'pending':
       default:
-        return <Badge variant="teal" dot>Tracking / In Progress</Badge>;
+        return <Badge variant="sage" size="sm" dot>TRACKING</Badge>;
     }
   };
 
@@ -38,7 +38,7 @@ export const EventMemoryDetailDrawer: React.FC<EventMemoryDetailDrawerProps> = (
       isOpen={isOpen}
       onClose={onClose}
       title={item.title}
-      subtitle={`${item.ticker} • ${item.companyName} • Announced: ${item.commitmentDate}`}
+      subtitle={`${item.ticker} • ${item.companyName} • Declared: ${item.commitmentDate}`}
       maxWidth="lg"
       footer={
         <div className="flex items-center justify-between gap-3">
@@ -47,109 +47,109 @@ export const EventMemoryDetailDrawer: React.FC<EventMemoryDetailDrawerProps> = (
               onClose();
               onNavigateToResearch(item.ticker);
             }}
-            className="flex-1 rounded-xl bg-stone-900 hover:bg-stone-800 dark:bg-white dark:hover:bg-stone-200 text-white dark:text-stone-900 py-2.5 px-4 text-xs font-semibold transition-colors text-center"
+            className="flex-1 rounded-xl bg-forest hover:bg-forest-light text-white py-2.5 px-4 text-xs font-semibold transition-colors text-center shadow-sm"
           >
             Investigate {item.ticker} Fundamentals &rarr;
           </button>
         </div>
       }
     >
-      <div className="space-y-4 text-xs">
+      <div className="space-y-4 text-xs text-ink dark:text-ink-light">
         {/* TOP PARAMETERS */}
-        <div className="rounded-xl bg-stone-50 dark:bg-ink-surfaceSubtle border border-stone-200/80 dark:border-ink-border p-3.5 space-y-2.5">
+        <div className="rounded-xl bg-cream/70 dark:bg-ink-surfaceSubtle border border-divider p-3.5 space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-xs font-bold text-stone-900 dark:text-white">
+            <span className="font-mono text-xs font-bold text-ink dark:text-white">
               Target Milestone: {item.announcedMetric}
             </span>
             {getStatusBadge(item.status)}
           </div>
-          <div className="text-[11px] text-stone-500 font-mono">
-            Committed Deadline: <strong className="text-stone-800 dark:text-slate-200">{item.milestoneDeadline}</strong>
+          <div className="text-[11px] text-ink-muted font-mono">
+            Committed Deadline: <strong className="text-forest dark:text-emerald">{item.milestoneDeadline}</strong>
           </div>
         </div>
 
-        {/* VERBATIM ORIGINAL COMMITMENT */}
-        <div className="rounded-xl bg-teal-50/50 dark:bg-teal-950/20 border border-teal-200/80 dark:border-teal-900/40 p-3.5 space-y-1.5">
-          <div className="flex items-center justify-between text-[10px] font-mono uppercase text-teal-800 dark:text-teal-400">
-            <span className="font-semibold">Original Management Promise ({item.commitmentDate})</span>
-            <span className="text-stone-500 dark:text-slate-400">{item.sourceDoc}</span>
+        {/* VERBATIM MANAGEMENT COMMITMENT */}
+        <div className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3.5 space-y-2 shadow-subtle">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-ink-muted">
+            Verbatim Management Guidance
           </div>
-          <p className="text-xs text-stone-800 dark:text-slate-200 italic leading-relaxed">
-            "{item.sourcePageOrQuote}"
-          </p>
+          <blockquote className="border-l-2 border-forest pl-3 text-xs italic text-ink dark:text-white leading-relaxed">
+            {item.sourcePageOrQuote}
+          </blockquote>
+          <div className="text-[10px] font-mono text-ink-muted pt-1">
+            Citation: {item.sourceDoc}
+          </div>
         </div>
 
-        {/* CHRONOLOGICAL PROGRESSION AUDIT TRAIL */}
-        <div className="space-y-2 pt-1">
-          <div className="flex items-center justify-between text-xs font-semibold text-stone-800 dark:text-slate-200">
-            <span className="font-mono uppercase text-[10px] tracking-wider text-stone-500">
-              Chronological Audit Trail ({item.timeline.length} Observations)
-            </span>
-            <span className="text-[10px] text-teal-700 dark:text-teal-400 font-mono">Verified Disclosures</span>
+        {/* 3-STEP CHRONOLOGICAL AUDIT TIMELINE */}
+        <div className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3.5 space-y-3 shadow-subtle">
+          <div className="text-[10px] font-mono uppercase tracking-wider text-ink-muted">
+            Chronological Verification Chain
           </div>
 
-          <div className="relative pl-4 border-l-2 border-stone-200 dark:border-ink-border ml-2 space-y-3">
-            {item.timeline.map((obs, idx) => (
-              <div key={idx} className="relative text-xs space-y-0.5">
-                <div className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-teal-600 dark:bg-teal-400 border-2 border-white dark:border-ink-surface" />
-                <div className="flex items-center justify-between text-[10px] font-mono text-stone-400">
-                  <span className="font-semibold text-stone-700 dark:text-slate-300">{obs.date}</span>
-                  <span className="truncate max-w-[160px]">{obs.sourceDoc}</span>
+          <div className="space-y-3 pl-2">
+            {item.timeline.map((step, idx) => (
+              <div key={idx} className="relative pl-5 border-l-2 border-divider pb-2 last:pb-0">
+                <span className="absolute -left-[5px] top-0 h-2.5 w-2.5 rounded-full bg-forest dark:bg-emerald" />
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-xs text-ink dark:text-white">{step.date}</span>
+                  {step.reportedMetric && (
+                    <Badge variant="sage" size="sm">
+                      {step.reportedMetric}
+                    </Badge>
+                  )}
                 </div>
-                <p className="text-xs text-stone-800 dark:text-slate-200 leading-snug">
-                  {obs.observation}
+                <p className="mt-1 text-xs text-ink-muted leading-relaxed">
+                  {step.observation}
                 </p>
-                {obs.reportedMetric && (
-                  <span className="inline-block mt-1 font-mono text-[10px] px-2 py-0.5 rounded bg-stone-100 dark:bg-slate-800 text-stone-700 dark:text-slate-300">
-                    Disclosed: {obs.reportedMetric}
-                  </span>
-                )}
+                <div className="text-[10px] font-mono text-ink-muted mt-1">
+                  Source: {step.sourceDoc}
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* FACT VS AI SYNTHESIS SEPARATION */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1 text-xs">
-          <div className="rounded-xl bg-stone-50 dark:bg-ink-surfaceSubtle border border-stone-200/80 dark:border-ink-border p-3 space-y-1">
-            <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold text-stone-600 dark:text-slate-400">
-              <ShieldCheck size={13} className="text-emerald-600" />
-              Audited Facts
+        {/* FACTUAL SUMMARY VS AI INTERPRETATION */}
+        <div className="grid sm:grid-cols-2 gap-3">
+          <div className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3.5 space-y-1.5 shadow-subtle">
+            <div className="flex items-center gap-1.5 font-bold text-ink dark:text-white text-xs">
+              <ShieldCheck size={14} className="text-forest" />
+              <span>Audited Delivery Facts</span>
             </div>
-            <p className="text-xs text-stone-700 dark:text-slate-300 leading-relaxed">
+            <p className="text-xs text-ink-muted leading-relaxed">
               {item.factsSummary}
             </p>
           </div>
 
-          <div className="rounded-xl bg-teal-50/50 dark:bg-teal-950/20 border border-teal-200/80 dark:border-teal-900/40 p-3 space-y-1">
-            <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase font-bold text-teal-800 dark:text-teal-400">
-              <Sparkles size={13} className="text-teal-600" />
-              FINN Capital Allocation Assessment
+          <div className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3.5 space-y-1.5 shadow-subtle">
+            <div className="flex items-center gap-1.5 font-bold text-forest dark:text-emerald text-xs">
+              <Sparkles size={14} />
+              <span>Capital Allocation Assessment</span>
             </div>
-            <p className="text-xs text-teal-900 dark:text-teal-200 leading-relaxed">
+            <p className="text-xs text-ink-muted leading-relaxed">
               {item.aiInterpretation}
             </p>
           </div>
         </div>
 
-        {/* HISTORICAL PRECEDENTS & COMPARABLES */}
+        {/* HISTORICAL COMPARABLE PRECEDENTS */}
         {item.historicalComps && item.historicalComps.length > 0 && (
-          <div className="rounded-xl border border-stone-200/80 dark:border-ink-border p-3.5 space-y-2">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-stone-500 font-semibold flex items-center gap-1.5">
-              <History size={13} />
-              Historical Corporate Precedent
+          <div className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3.5 space-y-2 shadow-subtle">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-ink-muted">
+              Historical Peer Comparisons
             </div>
-            <div className="space-y-1.5 text-xs">
+            <div className="space-y-1.5">
               {item.historicalComps.map((comp, idx) => (
-                <div key={idx} className="p-2 rounded-lg bg-stone-50 dark:bg-ink-bg border border-stone-100 dark:border-ink-borderSubtle">
-                  <div className="flex items-center justify-between text-[11px] font-mono text-stone-500">
-                    <span className="font-bold text-stone-800 dark:text-slate-200">{comp.companyOrPeer}</span>
-                    <span>{comp.year}</span>
+                <div key={idx} className="flex justify-between items-center text-xs p-2 rounded-lg bg-cream/50 border border-divider">
+                  <div>
+                    <span className="font-bold text-ink dark:text-white mr-1.5">{comp.companyOrPeer}</span>
+                    <span className="text-ink-muted">({comp.year})</span>
+                    <div className="text-[11px] text-ink-muted mt-0.5">{comp.pastEvent}</div>
                   </div>
-                  <p className="text-xs text-stone-700 dark:text-slate-300 mt-0.5">{comp.pastEvent}</p>
-                  <div className="text-[10px] font-mono text-teal-700 dark:text-teal-400 mt-1">
-                    Recorded Result: {comp.outcome}
-                  </div>
+                  <Badge variant="sage" size="sm">
+                    {comp.outcome}
+                  </Badge>
                 </div>
               ))}
             </div>

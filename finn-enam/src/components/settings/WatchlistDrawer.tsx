@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Company, AlertSettings, TriggeredAlert, MarketCapCategory } from '../../types';
+import { Company, AlertSettings, TriggeredAlert, MarketCapCategory, AnnouncementCategory } from '../../types';
 import { Drawer } from '../common/Drawer';
-import { Search, Star, Info, BarChart2 } from 'lucide-react';
+import { Search, Star, Check } from 'lucide-react';
+import { CATEGORY_LABELS, DEFAULT_ALERT_SETTINGS } from '../../data/alertSettings';
 
 interface WatchlistDrawerProps {
   isOpen: boolean;
@@ -24,7 +25,6 @@ export const WatchlistDrawer: React.FC<WatchlistDrawerProps> = ({
   onSelectCompanyForResearch,
   settings,
   onChangeSettings,
-  activeAlerts,
 }) => {
   const [activeTab, setActiveTab] = useState<'watchlist' | 'thresholds'>(initialTab);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -41,117 +41,119 @@ export const WatchlistDrawer: React.FC<WatchlistDrawerProps> = ({
 
   const watchlistCount = companies.filter((c) => c.inWatchlist).length;
 
+  const handleToggleCategory = (cat: AnnouncementCategory) => {
+    onChangeSettings({
+      ...settings,
+      enabledCategories: {
+        ...settings.enabledCategories,
+        [cat]: !settings.enabledCategories[cat],
+      },
+    });
+  };
+
   return (
     <Drawer
       isOpen={isOpen}
       onClose={onClose}
       title="Watchlist & Threshold Controls"
-      subtitle={`${watchlistCount} of ${companies.length} Indian Equities Followed`}
+      subtitle={`${watchlistCount} of ${companies.length} Indian Equities Tracked`}
       maxWidth="lg"
     >
-      <div className="space-y-4 text-xs">
+      <div className="space-y-4 text-xs text-ink dark:text-ink-light">
         {/* Sub-navigation tabs */}
-        <div className="flex rounded-xl bg-stone-100 dark:bg-ink-surfaceSubtle p-1 border border-stone-200/80 dark:border-ink-border">
+        <div className="flex rounded-xl bg-cream-dark dark:bg-ink-surfaceSubtle p-1 border border-divider">
           <button
             onClick={() => setActiveTab('watchlist')}
             className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-all ${
               activeTab === 'watchlist'
-                ? 'bg-white dark:bg-ink-surface text-stone-900 dark:text-white font-semibold shadow-subtle'
-                : 'text-stone-500 dark:text-slate-400 hover:text-stone-900'
+                ? 'bg-white dark:bg-ink-surface text-ink dark:text-white font-semibold shadow-subtle'
+                : 'text-ink-muted hover:text-ink'
             }`}
           >
-            Tracked Equities ({watchlistCount})
+            Watchlist Universe ({watchlistCount})
           </button>
           <button
             onClick={() => setActiveTab('thresholds')}
             className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium transition-all ${
               activeTab === 'thresholds'
-                ? 'bg-white dark:bg-ink-surface text-stone-900 dark:text-white font-semibold shadow-subtle'
-                : 'text-stone-500 dark:text-slate-400 hover:text-stone-900'
+                ? 'bg-white dark:bg-ink-surface text-ink dark:text-white font-semibold shadow-subtle'
+                : 'text-ink-muted hover:text-ink'
             }`}
           >
-            Trigger Sensitivity ({activeAlerts.length} Active)
+            Alert Anomaly Thresholds
           </button>
         </div>
 
         {/* TAB 1: WATCHLIST MANAGER */}
         {activeTab === 'watchlist' && (
           <div className="space-y-3">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search symbol, company or sector..."
-                className="w-full rounded-xl bg-stone-50 dark:bg-ink-bg border border-stone-200 dark:border-ink-border py-2 pl-9 pr-3 text-xs text-stone-900 dark:text-white placeholder:text-stone-400 focus:outline-none focus:border-stone-400"
-              />
+            {/* Search and Cap Filters */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+                <input
+                  type="text"
+                  placeholder="Search universe by ticker, name, or sector..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-xl border border-divider bg-white dark:bg-ink-surface py-2 pl-8 pr-3 text-xs placeholder:text-ink-muted focus:border-forest focus:outline-none focus:ring-1 focus:ring-forest"
+                />
+              </div>
+
+              <div className="flex rounded-xl bg-cream-dark p-0.5 border border-divider">
+                {(['All', 'Large Cap', 'Mid Cap', 'Small Cap'] as const).map((cap) => (
+                  <button
+                    key={cap}
+                    onClick={() => setCapFilter(cap)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                      capFilter === cap
+                        ? 'bg-white text-ink font-semibold shadow-subtle'
+                        : 'text-ink-muted hover:text-ink'
+                    }`}
+                  >
+                    {cap}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px]">
-              {(['All', 'Large Cap', 'Mid Cap', 'Small Cap'] as const).map((cap) => (
-                <button
-                  key={cap}
-                  onClick={() => setCapFilter(cap)}
-                  className={`rounded-lg px-2.5 py-1 font-medium transition-colors whitespace-nowrap ${
-                    capFilter === cap
-                      ? 'bg-stone-900 dark:bg-white text-white dark:text-stone-900 font-semibold'
-                      : 'bg-stone-100 dark:bg-ink-surfaceSubtle text-stone-600 dark:text-slate-300'
-                  }`}
-                >
-                  {cap}
-                </button>
-              ))}
-            </div>
-
-            <div className="divide-y divide-stone-100 dark:divide-ink-border max-h-[380px] overflow-y-auto pr-1">
+            {/* Companies List */}
+            <div className="space-y-1.5 max-h-[460px] overflow-y-auto pr-1">
               {filteredCompanies.map((c) => {
-                const isPos = c.changePercent >= 0;
+                const isWatched = c.inWatchlist;
                 return (
-                  <div key={c.ticker} className="flex items-center justify-between py-2.5 hover:bg-stone-50/60 dark:hover:bg-ink-bg/40 px-1 rounded-lg transition-colors">
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <button
-                        onClick={() => onToggleWatchlist(c.ticker)}
-                        className="p-1 text-stone-400 hover:text-amber-500 transition-colors"
-                        aria-label="Toggle watchlist"
-                      >
-                        <Star size={15} className={c.inWatchlist ? 'fill-amber-500 text-amber-500' : ''} />
-                      </button>
-                      <div
-                        onClick={() => {
-                          onClose();
-                          onSelectCompanyForResearch(c.ticker);
-                        }}
-                        className="cursor-pointer min-w-0 flex-1"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs font-bold text-stone-900 dark:text-white">{c.ticker}</span>
-                          <span className="text-[10px] text-stone-400 font-mono">{c.marketCapCategory}</span>
-                        </div>
-                        <p className="text-[11px] text-stone-500 truncate">{c.name}</p>
+                  <div
+                    key={c.ticker}
+                    className="flex items-center justify-between rounded-xl border border-divider bg-white dark:bg-ink-surface p-2.5 hover:bg-cream-light/60 transition-colors"
+                  >
+                    <div
+                      onClick={() => onSelectCompanyForResearch(c.ticker)}
+                      className="cursor-pointer flex-1 space-y-0.5 mr-2"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-xs text-ink dark:text-white">
+                          {c.ticker}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-sage text-forest font-medium">
+                          {c.marketCapCategory}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-ink-muted truncate">
+                        {c.name} • {c.sector}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 text-right flex-shrink-0">
-                      <div className="font-mono text-xs">
-                        <div className="font-semibold text-stone-900 dark:text-white">
-                          ₹{c.currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 1 })}
-                        </div>
-                        <div className={`text-[10px] ${isPos ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
-                          {isPos ? '+' : ''}{c.changePercent.toFixed(2)}%
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          onClose();
-                          onSelectCompanyForResearch(c.ticker);
-                        }}
-                        className="p-1.5 text-stone-400 hover:text-stone-900 dark:hover:text-white rounded"
-                        title="Open Research"
-                      >
-                        <BarChart2 size={14} />
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => onToggleWatchlist(c.ticker)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        isWatched
+                          ? 'bg-forest text-white shadow-sm'
+                          : 'bg-cream-dark text-ink hover:bg-cream border border-divider'
+                      }`}
+                    >
+                      <Star size={12} className={isWatched ? 'fill-white' : 'text-ink-muted'} />
+                      <span>{isWatched ? 'Tracking' : 'Add'}</span>
+                    </button>
                   </div>
                 );
               })}
@@ -162,70 +164,117 @@ export const WatchlistDrawer: React.FC<WatchlistDrawerProps> = ({
         {/* TAB 2: THRESHOLD CONTROLS */}
         {activeTab === 'thresholds' && (
           <div className="space-y-4">
-            {/* Price Move Sensitivity */}
-            <div className="rounded-xl bg-stone-50 dark:bg-ink-surfaceSubtle border border-stone-200/80 dark:border-ink-border p-3.5 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-stone-800 dark:text-slate-200 text-xs">
-                  Price Movement Trigger (&plusmn;X%)
-                </span>
-                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-white dark:bg-ink-surface text-stone-900 dark:text-white border border-stone-200 dark:border-ink-border">
-                  &plusmn;{settings.priceMoveThresholdPercent.toFixed(1)}% in a day
+            {/* Price Move Sensitivity Slider */}
+            <div className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3.5 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-ink dark:text-white">Price Move Sensitivity</span>
+                <span className="font-mono font-bold text-forest text-sm">
+                  ±{settings.priceMoveThresholdPercent}%
                 </span>
               </div>
-              <input
-                type="range"
-                min="1.5"
-                max="8.0"
-                step="0.5"
-                value={settings.priceMoveThresholdPercent}
-                onChange={(e) =>
-                  onChangeSettings({
-                    ...settings,
-                    priceMoveThresholdPercent: parseFloat(e.target.value),
-                  })
-                }
-                className="w-full accent-stone-900 dark:accent-teal-400 cursor-pointer h-1.5 bg-stone-200 dark:bg-slate-700 rounded-lg"
-              />
-              <p className="text-[11px] text-stone-500 leading-normal">
-                Surfaces stocks that move more than &plusmn;{settings.priceMoveThresholdPercent.toFixed(1)}% from previous close. Higher values reduce noise; lower values catch smaller trends.
+              <p className="text-[11px] text-ink-muted leading-relaxed">
+                Trigger anomaly review whenever a portfolio stock moves more than this percentage in a single trading session.
               </p>
+              <div className="flex gap-2">
+                {[2, 3, 5, 7, 10].map((val) => (
+                  <button
+                    key={val}
+                    onClick={() => onChangeSettings({ ...settings, priceMoveThresholdPercent: val })}
+                    className={`flex-1 py-1 rounded-lg border text-xs font-mono font-bold transition-colors ${
+                      settings.priceMoveThresholdPercent === val
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-white border-divider text-ink-muted hover:text-ink hover:bg-cream-light'
+                    }`}
+                  >
+                    ±{val}%
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Volume Spike Threshold */}
-            <div className="rounded-xl bg-stone-50 dark:bg-ink-surfaceSubtle border border-stone-200/80 dark:border-ink-border p-3.5 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-stone-800 dark:text-slate-200 text-xs">
-                  Volume Anomaly Trigger (Y&times; 20-DMA)
-                </span>
-                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-white dark:bg-ink-surface text-stone-900 dark:text-white border border-stone-200 dark:border-ink-border">
-                  &gt; {settings.volumeSpikeMultiplier.toFixed(1)}&times; 20-day Average
+            {/* Volume Spike Multiplier Slider */}
+            <div className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3.5 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-ink dark:text-white">Volume Spike Multiplier</span>
+                <span className="font-mono font-bold text-forest text-sm">
+                  {settings.volumeSpikeMultiplier}x 20-DMA
                 </span>
               </div>
-              <input
-                type="range"
-                min="1.2"
-                max="4.5"
-                step="0.1"
-                value={settings.volumeSpikeMultiplier}
-                onChange={(e) =>
-                  onChangeSettings({
-                    ...settings,
-                    volumeSpikeMultiplier: parseFloat(e.target.value),
-                  })
-                }
-                className="w-full accent-stone-900 dark:accent-teal-400 cursor-pointer h-1.5 bg-stone-200 dark:bg-slate-700 rounded-lg"
-              />
-              <p className="text-[11px] text-stone-500 leading-normal">
-                Benchmarks traded volume against the rolling 20-day Simple Moving Average (SMA-20). Triggers only when trading volume is unusually elevated.
+              <p className="text-[11px] text-ink-muted leading-relaxed">
+                Trigger high-priority alerts when turnover exceeds multiple of rolling 20-day moving average.
               </p>
+              <div className="flex gap-2">
+                {[1.5, 2.0, 2.5, 3.0, 5.0].map((val) => (
+                  <button
+                    key={val}
+                    onClick={() => onChangeSettings({ ...settings, volumeSpikeMultiplier: val })}
+                    className={`flex-1 py-1 rounded-lg border text-xs font-mono font-bold transition-colors ${
+                      settings.volumeSpikeMultiplier === val
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-white border-divider text-ink-muted hover:text-ink hover:bg-cream-light'
+                    }`}
+                  >
+                    {val}x
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-stone-100 dark:bg-ink-bg border border-stone-200 dark:border-ink-border text-[11px] text-stone-600 dark:text-slate-400 flex items-start gap-2">
-              <Info size={14} className="text-stone-400 flex-shrink-0 mt-0.5" />
-              <span>
-                Changes take effect immediately and dynamically recalculate priority alerts across the Today and Signals screens.
+            {/* Active Digest Window */}
+            <div className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3.5 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-ink dark:text-white">Digest Time Window</span>
+                <span className="font-mono font-bold text-forest uppercase">{settings.activeDigestWindow}</span>
+              </div>
+              <div className="flex gap-2">
+                {(['24h', '48h', '7d', 'all'] as const).map((win) => (
+                  <button
+                    key={win}
+                    onClick={() => onChangeSettings({ ...settings, activeDigestWindow: win })}
+                    className={`flex-1 py-1 rounded-lg border text-xs font-bold transition-colors ${
+                      settings.activeDigestWindow === win
+                        ? 'bg-forest text-white border-forest'
+                        : 'bg-white border-divider text-ink-muted hover:text-ink hover:bg-cream-light'
+                    }`}
+                  >
+                    {win.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 17 Categories Quick Summary */}
+            <div className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3.5 space-y-2">
+              <span className="font-bold text-ink dark:text-white block">
+                17 Announcement Categories
               </span>
+              <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                {(Object.keys(CATEGORY_LABELS) as AnnouncementCategory[]).map((cat) => {
+                  const isEnabled = settings.enabledCategories[cat] !== false;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => handleToggleCategory(cat)}
+                      className={`flex items-center justify-between p-1.5 rounded-lg border text-left text-[11px] transition-colors ${
+                        isEnabled
+                          ? 'bg-sage border-sage-dark text-forest font-semibold'
+                          : 'bg-cream-dark border-divider text-ink-muted'
+                      }`}
+                    >
+                      <span className="truncate mr-1">{CATEGORY_LABELS[cat]?.label || cat}</span>
+                      {isEnabled && <Check size={12} className="shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+
+            <button
+              onClick={() => onChangeSettings(DEFAULT_ALERT_SETTINGS)}
+              className="w-full py-2.5 rounded-xl border border-divider bg-white text-ink-muted hover:text-ink hover:bg-cream-light font-medium text-xs transition-colors"
+            >
+              Reset to Institutional Defaults
+            </button>
           </div>
         )}
       </div>

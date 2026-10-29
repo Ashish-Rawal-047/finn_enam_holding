@@ -1,6 +1,6 @@
 import React from 'react';
 import { Company, TriggeredAlert, EventMemoryItem } from '../types';
-import { ArrowUpRight, TrendingUp, TrendingDown, Clock, ShieldCheck, ChevronRight, History } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock, ChevronRight, History } from 'lucide-react';
 import { Badge } from '../components/common/Badge';
 
 interface TodayScreenProps {
@@ -37,7 +37,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       focalHeadline = `${top.ticker} requires immediate review today.`;
       focalExplanation = top.explanation;
     } else {
-      focalHeadline = `${uniqueTickers.length} companies require your attention today.`;
+      focalHeadline = `${uniqueTickers.length} developments deserve your attention today.`;
       const first = highPriorityAlerts[0];
       const second = highPriorityAlerts.find((a) => a.ticker !== first.ticker) || highPriorityAlerts[1];
       if (second && second.ticker !== first.ticker) {
@@ -70,8 +70,8 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     const parts = ticker.split('.');
     return (
       <span className="font-mono text-xs">
-        <span className="font-bold text-stone-900 dark:text-white">{parts[0]}</span>
-        {parts[1] && <span className="text-[10px] text-stone-400 dark:text-slate-500">.{parts[1]}</span>}
+        <span className="font-bold text-ink dark:text-white">{parts[0]}</span>
+        {parts[1] && <span className="text-[10px] text-ink-muted">.{parts[1]}</span>}
       </span>
     );
   };
@@ -81,59 +81,59 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       {/* 1. THE FOCAL POINT (Main Editorial Briefing Insight) */}
       <section className="space-y-2">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500 dark:text-slate-400">
-            Wednesday, October 29 • Briefing
+          <span className="text-[10px] font-mono uppercase tracking-widest text-ink-muted">
+            Wednesday, October 29 • Morning Briefing
           </span>
         </div>
 
-        <h1 className="font-serif text-2xl sm:text-3xl font-medium tracking-tight text-stone-900 dark:text-white leading-tight">
+        <h1 className="font-serif text-3xl sm:text-4xl font-normal tracking-tight text-ink dark:text-white leading-[1.15]">
           {focalHeadline}
         </h1>
 
-        <p className="text-xs sm:text-sm text-stone-600 dark:text-slate-300 leading-relaxed max-w-xl font-normal">
+        <p className="text-xs sm:text-sm text-ink-muted dark:text-ink-subtle leading-relaxed max-w-xl font-normal">
           {focalExplanation}
         </p>
       </section>
 
       {/* 2. RESTRAINED WATCHLIST SNAPSHOT (Max 3 Key Metrics) */}
-      <section className="rounded-xl bg-stone-100/70 dark:bg-ink-surfaceSubtle border border-stone-200/70 dark:border-ink-border p-3.5 sm:p-4">
+      <section className="rounded-2xl bg-white dark:bg-ink-surface border border-divider dark:border-ink-border p-4 sm:p-5 shadow-subtle">
         <div className="flex items-center justify-between gap-3 text-xs">
           <div>
-            <span className="text-[10px] uppercase font-mono tracking-wider text-stone-500 dark:text-slate-400 block">
-              Watchlist Universe
+            <span className="text-[10px] uppercase font-mono tracking-wider text-ink-muted block">
+              Watchlist
             </span>
-            <div className="text-sm font-semibold text-stone-900 dark:text-white font-mono mt-0.5">
-              {watchlistCount} <span className="text-xs font-normal text-stone-500 dark:text-slate-400">of {companies.length}</span>
+            <div className="text-sm font-semibold text-ink dark:text-white font-mono mt-0.5">
+              {watchlistCount} <span className="text-xs font-normal text-ink-muted">of {companies.length}</span>
             </div>
           </div>
 
-          <div className="border-l border-stone-200 dark:border-ink-border pl-3 sm:pl-4">
-            <span className="text-[10px] uppercase font-mono tracking-wider text-stone-500 dark:text-slate-400 block">
-              Priority Signals
+          <div className="border-l border-divider dark:border-ink-border pl-3 sm:pl-4">
+            <span className="text-[10px] uppercase font-mono tracking-wider text-ink-muted block">
+              Signals
             </span>
-            <div className="text-sm font-semibold text-stone-900 dark:text-white font-mono mt-0.5 flex items-center gap-1.5">
+            <div className="text-sm font-semibold text-ink dark:text-white font-mono mt-0.5 flex items-center gap-1.5">
               <span>{priorityCount}</span>
               {priorityCount > 0 && (
-                <span className="h-1.5 w-1.5 rounded-full bg-teal-600 dark:bg-teal-400" />
+                <span className="h-1.5 w-1.5 rounded-full bg-forest" />
               )}
             </div>
           </div>
 
-          <div className="border-l border-stone-200 dark:border-ink-border pl-3 sm:pl-4">
-            <span className="text-[10px] uppercase font-mono tracking-wider text-stone-500 dark:text-slate-400 block">
+          <div className="border-l border-divider dark:border-ink-border pl-3 sm:pl-4">
+            <span className="text-[10px] uppercase font-mono tracking-wider text-ink-muted block">
               Daily Posture
             </span>
             <div className="text-sm font-semibold font-mono mt-0.5 flex items-center gap-1">
               {isAvgPositive ? (
-                <span className="text-emerald-700 dark:text-emerald-400 flex items-center">
+                <span className="text-forest dark:text-emerald font-bold flex items-center">
                   <TrendingUp size={13} className="mr-0.5" /> +{avgChange}%
                 </span>
               ) : (
-                <span className="text-rose-700 dark:text-rose-400 flex items-center">
+                <span className="text-fin-red font-bold flex items-center">
                   <TrendingDown size={13} className="mr-0.5" /> {avgChange}%
                 </span>
               )}
-              <span className="text-[10px] text-stone-400 dark:text-slate-500 font-normal ml-0.5">
+              <span className="text-[10px] text-ink-muted font-normal ml-0.5">
                 ({advancingCount}&uarr; {decliningCount}&darr;)
               </span>
             </div>
@@ -141,135 +141,146 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
         </div>
       </section>
 
-      {/* 3. PRIORITY SIGNALS (Unified Editorial Stream, Not Identical Cloned Boxes) */}
+      {/* 3. PRIORITY SIGNALS (Unified Editorial Stream) */}
       <section className="space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="text-[11px] font-mono uppercase tracking-wider text-stone-700 dark:text-slate-300 font-semibold">
+            <h2 className="text-[11px] font-mono uppercase tracking-wider text-ink font-semibold">
               Priority Signals
             </h2>
-            <span className="text-[10px] text-stone-400 dark:text-slate-500 font-mono">
+            <span className="text-[10px] text-ink-muted">
               ({topThreeSignals.length} of {triggeredAlerts.length})
             </span>
           </div>
 
           <button
             onClick={onNavigateToSignals}
-            className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300 transition-colors"
+            className="group flex items-center gap-1 text-xs font-semibold text-forest dark:text-emerald hover:underline"
           >
             <span>View all signals</span>
-            <ArrowUpRight size={13} />
+            <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
           </button>
         </div>
 
-        {/* Unified Editorial List */}
-        <div className="rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border divide-y divide-stone-100 dark:divide-ink-border overflow-hidden shadow-subtle">
-          {topThreeSignals.map((signal) => (
-            <div
-              key={signal.id}
-              onClick={() => onSelectSignal(signal)}
-              className="group cursor-pointer p-4 hover:bg-stone-50/70 dark:hover:bg-ink-surfaceSubtle transition-colors"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    {formatTicker(signal.ticker)}
-                    <span className="text-xs text-stone-500 dark:text-slate-400 truncate max-w-[140px]">
-                      {signal.companyName}
-                    </span>
-                    <Badge
-                      variant={signal.severity === 'critical' ? 'rose' : 'amber'}
-                      size="xs"
-                    >
-                      {signal.triggerMetric}
-                    </Badge>
-                  </div>
-
-                  <h3 className="text-xs sm:text-sm font-semibold text-stone-900 dark:text-white leading-snug group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">
-                    {signal.headline}
-                  </h3>
-
-                  <p className="mt-1 text-xs text-stone-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
-                    {signal.explanation}
-                  </p>
-
-                  <div className="mt-2.5 flex items-center justify-between text-[11px] text-stone-400 dark:text-slate-500 font-mono">
-                    <span className="flex items-center gap-1">
-                      <Clock size={11} /> {signal.timestamp}
-                    </span>
-                    <span className="text-teal-700 dark:text-teal-400 font-sans font-medium flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
-                      Inspect signal &rarr;
+        {/* Editorial Hairline Stream Container */}
+        <div className="rounded-2xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface overflow-hidden shadow-subtle divide-y divide-divider/70 dark:divide-ink-border">
+          {topThreeSignals.length === 0 ? (
+            <div className="p-6 text-center text-xs text-ink-muted">
+              No priority alerts triggered today.
+            </div>
+          ) : (
+            topThreeSignals.map((item) => (
+              <div
+                key={item.id}
+                onClick={() => onSelectSignal(item)}
+                className="group relative cursor-pointer p-4 transition-colors hover:bg-cream-light/60 dark:hover:bg-ink-surfaceSubtle/60"
+              >
+                {/* Top Row: Ticker, Name, Metric Tag */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-baseline gap-2">
+                    {formatTicker(item.ticker)}
+                    <span className="text-xs text-ink-muted truncate max-w-[150px] sm:max-w-[220px]">
+                      {item.companyName}
                     </span>
                   </div>
+
+                  <Badge
+                    variant={item.type === 'price_move' || item.type === 'volume_spike' ? 'amber' : 'forest'}
+                    size="sm"
+                  >
+                    {item.triggerMetric}
+                  </Badge>
+                </div>
+
+                {/* Second Row: Concise Editorial Headline */}
+                <h3 className="mt-1 text-sm font-semibold tracking-tight text-ink dark:text-white line-clamp-1 group-hover:text-forest transition-colors">
+                  {item.headline}
+                </h3>
+
+                {/* Third Row: 1-line Takeaway */}
+                <p className="mt-1 text-xs text-ink-muted line-clamp-2 leading-relaxed">
+                  {item.explanation}
+                </p>
+
+                {/* Bottom Row: Timestamp and Inspect Chevrons */}
+                <div className="mt-2.5 flex items-center justify-between text-[11px] text-ink-muted">
+                  <span className="flex items-center gap-1 font-mono text-[10px]">
+                    <Clock size={11} className="text-ink-muted" />
+                    {item.timestamp}
+                  </span>
+
+                  <span className="flex items-center gap-0.5 text-xs font-semibold text-forest dark:text-emerald group-hover:underline">
+                    <span>Inspect details</span>
+                    <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+                  </span>
                 </div>
               </div>
-            </div>
-          ))}
-
-          {topThreeSignals.length === 0 && (
-            <div className="p-8 text-center text-xs text-stone-500 dark:text-slate-400">
-              No active priority signals detected across your watchlist today.
-            </div>
+            ))
           )}
         </div>
       </section>
 
-      {/* 4. EVENT MEMORY PREVIEW (The Distinctive Innovation) */}
+      {/* 4. EVENT MEMORY SPOTLIGHT */}
       {spotlightMemory && (
-        <section className="space-y-2.5 pt-1">
+        <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <History size={13} className="text-teal-700 dark:text-teal-400" />
-              <h2 className="text-[11px] font-mono uppercase tracking-wider text-stone-700 dark:text-slate-300 font-semibold">
+            <div className="flex items-center gap-2">
+              <span className="flex h-1.5 w-1.5 rounded-full bg-forest dark:bg-emerald" />
+              <h2 className="text-[11px] font-mono uppercase tracking-wider text-ink font-semibold">
                 Event Memory Spotlight
               </h2>
             </div>
             <button
-              onClick={() => onNavigateToMemory(spotlightMemory.id)}
-              className="text-xs font-medium text-teal-700 hover:text-teal-800 dark:text-teal-400 dark:hover:text-teal-300 transition-colors"
+              onClick={() => onNavigateToMemory()}
+              className="text-xs font-semibold text-forest dark:text-emerald hover:underline flex items-center gap-1"
             >
-              Explore ledger &rarr;
+              <span>Commitment ledger</span>
+              <ChevronRight size={13} />
             </button>
           </div>
 
           <div
             onClick={() => onNavigateToMemory(spotlightMemory.id)}
-            className="group cursor-pointer rounded-2xl bg-white dark:bg-ink-surface border border-stone-200/80 dark:border-ink-border p-4 shadow-subtle hover:border-teal-600/50 dark:hover:border-teal-500/50 transition-all"
+            className="group cursor-pointer rounded-2xl bg-sage/40 dark:bg-ink-surfaceSubtle border border-divider dark:border-ink-border p-4 transition-all hover:border-forest/40 shadow-subtle"
           >
-            <div className="flex items-start justify-between gap-2">
-              <div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   {formatTicker(spotlightMemory.ticker)}
-                  <Badge variant={spotlightMemory.status === 'delivered' ? 'emerald' : 'amber'} size="xs" dot>
+                  <span className="text-xs text-ink-muted">
+                    {spotlightMemory.companyName}
+                  </span>
+                  <Badge variant="forest" size="sm" dot>
                     {spotlightMemory.status.toUpperCase()}
                   </Badge>
                 </div>
-                <h3 className="mt-1 text-sm font-semibold text-stone-900 dark:text-white group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">
+
+                <h3 className="text-xs sm:text-sm font-semibold text-ink dark:text-white group-hover:text-forest transition-colors">
                   {spotlightMemory.title}
                 </h3>
               </div>
-              <ChevronRight size={16} className="text-stone-400 dark:text-slate-500 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors flex-shrink-0 mt-1" />
+
+              <div className="shrink-0 rounded-full bg-white dark:bg-ink-surface p-1.5 text-forest dark:text-emerald border border-divider">
+                <History size={15} />
+              </div>
             </div>
 
-            <p className="mt-1.5 text-xs text-stone-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
+            <p className="mt-2 text-xs text-ink-muted leading-relaxed line-clamp-2">
               {spotlightMemory.factsSummary}
             </p>
 
-            <div className="mt-3 flex items-center justify-between text-[11px] text-stone-500 dark:text-slate-400 font-mono border-t border-stone-100 dark:border-ink-border pt-2">
-              <span>Goal: {spotlightMemory.milestoneDeadline}</span>
-              <span className="text-teal-700 dark:text-teal-400 font-sans font-medium">
-                View chronological audit trail &rarr;
+            <div className="mt-3 flex items-center justify-between border-t border-divider pt-2 text-[11px]">
+              <span className="font-mono text-[10px] text-ink-muted">
+                Declared: {spotlightMemory.commitmentDate} • Milestone: {spotlightMemory.milestoneDeadline}
+              </span>
+              <span className="text-xs font-semibold text-forest dark:text-emerald group-hover:underline flex items-center gap-0.5">
+                <span>Audit trail</span>
+                <ChevronRight size={12} />
               </span>
             </div>
           </div>
         </section>
       )}
-
-      {/* 5. FOOTER ASSURANCE */}
-      <div className="flex items-center justify-center gap-1.5 pt-2 text-[11px] text-stone-400 dark:text-slate-500 font-mono">
-        <ShieldCheck size={13} className="text-emerald-600 dark:text-emerald-400" />
-        <span>Grounded in primary exchange disclosures & EOD market series</span>
-      </div>
     </div>
   );
 };

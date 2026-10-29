@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Lora:ital,wght@0,400..700;1,400..700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -24,18 +24,20 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background-color: #F7F3E8;
+    color: #18342A;
   }
 
-  /* Warm Ivory Light Mode Default */
+  /* Forest Green x Warm Cream Light Mode */
   body {
-    background-color: #FBFBF9;
-    color: #111827;
+    background-color: #F7F3E8;
+    color: #18342A;
   }
 
-  /* Midnight Dark Mode */
+  /* Deep Emerald Midnight Dark Mode */
   .dark body {
-    background-color: #0A0C10;
-    color: #F8FAFC;
+    background-color: #0B1B14;
+    color: #F7F3E8;
   }
 
   #root {
@@ -45,6 +47,7 @@
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
+    background-color: inherit;
   }
 
   /* Custom subtle scrollbars */
@@ -56,11 +59,11 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.3);
+    background: rgba(22, 78, 59, 0.2);
     border-radius: 4px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(148, 163, 184, 0.5);
+    background: rgba(22, 78, 59, 0.4);
   }
 }
 
@@ -75,5 +78,5 @@ button, a, input, select {
 
 /* Editorial Serif Accent Classes */
 .font-editorial {
-  font-family: 'Newsreader', Georgia, serif;
+  font-family: 'DM Serif Display', 'Lora', Georgia, serif;
 }

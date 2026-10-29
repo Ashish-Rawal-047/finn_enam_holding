@@ -21,23 +21,23 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenProvenance,
 }) => {
   return (
-    <header className="sticky top-0 z-30 w-full border-b border-stone-200/80 dark:border-ink-border bg-ivory-bg/90 dark:bg-ink-bg/90 backdrop-blur-md px-4 sm:px-6 py-3 transition-colors">
+    <header className="sticky top-0 z-30 w-full border-b border-divider bg-cream/95 dark:bg-ink-bg/95 backdrop-blur-md px-4 sm:px-6 py-3 transition-colors">
       <div className="mx-auto flex max-w-4xl items-center justify-between">
         {/* Brand & Wordmark */}
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-stone-900 text-white dark:bg-white dark:text-stone-900 font-semibold text-xs tracking-wider shadow-sm font-mono">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-forest text-white font-bold text-xs tracking-wider shadow-sm font-mono">
             FN
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold tracking-tight text-stone-900 dark:text-white">
+              <span className="text-sm font-bold tracking-tight text-ink dark:text-white">
                 FINN
               </span>
-              <span className="text-[10px] font-mono tracking-wider uppercase text-stone-500 dark:text-slate-400">
+              <span className="text-[10px] font-mono tracking-wider uppercase text-ink-muted dark:text-ink-subtle">
                 ENAM INTEL
               </span>
             </div>
-            <p className="text-[10px] text-stone-500 dark:text-slate-400 hidden xs:block">
+            <p className="text-[10px] text-ink-muted dark:text-ink-subtle hidden xs:block">
               Institutional Investment Agent
             </p>
           </div>
@@ -48,47 +48,44 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           {/* EOD Data Pill */}
           <button
             onClick={onOpenProvenance}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-stone-100 hover:bg-stone-200/70 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-stone-200 dark:border-slate-700/60 text-[11px] text-stone-600 dark:text-slate-300 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white hover:bg-cream-light dark:bg-ink-surface border border-divider text-[11px] text-ink dark:text-ink-light transition-colors shadow-subtle"
             title="Data verification & market baseline"
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald" />
             <span className="font-mono text-[10px] font-medium hidden sm:inline">EOD OCT 28</span>
             <span className="font-mono text-[10px] font-medium sm:hidden">EOD</span>
-            <Info size={11} className="text-stone-400 dark:text-slate-500" />
+            <Info size={11} className="text-ink-muted" />
           </button>
 
           {/* Watchlist Quick Button */}
           <button
             onClick={onOpenWatchlist}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-stone-100 hover:bg-stone-200/70 dark:bg-slate-800/80 dark:hover:bg-slate-800 border border-stone-200 dark:border-slate-700/60 text-[11px] text-stone-700 dark:text-slate-300 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white hover:bg-cream-light dark:bg-ink-surface border border-divider text-[11px] text-ink dark:text-ink-light transition-colors shadow-subtle"
             title="Open Watchlist Universe"
           >
-            <Star size={12} className="text-amber-500 fill-amber-500" />
+            <Star size={12} className="text-fin-amber fill-fin-amber" />
             <span className="font-mono text-[11px] font-semibold">{watchlistCount}</span>
           </button>
 
           {/* Alert Threshold Settings Button */}
           <button
             onClick={onOpenSettings}
-            className="p-1.5 rounded-full text-stone-600 hover:text-stone-900 hover:bg-stone-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors"
-            title="Configure Thresholds & Filters"
-            aria-label="Settings"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white hover:bg-cream-light dark:bg-ink-surface border border-divider text-ink-muted hover:text-forest dark:hover:text-emerald transition-colors shadow-subtle"
+            title="Alert Anomaly Sensitivity Settings"
           >
-            <Sliders size={15} />
+            <Sliders size={14} />
           </button>
 
-          {/* Light / Dark Mode Toggle */}
+          {/* Theme Toggle */}
           <button
             onClick={onToggleTheme}
-            className="p-1.5 rounded-full text-stone-600 hover:text-stone-900 hover:bg-stone-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors"
-            title={theme === 'dark' ? 'Switch to Warm Editorial Light' : 'Switch to Executive Dark'}
-            aria-label="Toggle theme"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white hover:bg-cream-light dark:bg-ink-surface border border-divider text-ink-muted hover:text-forest dark:hover:text-emerald transition-colors shadow-subtle"
+            title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
           >
-            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+            {theme === 'light' ? <Moon size={14} /> : <Sun size={14} className="text-fin-amber" />}
           </button>
         </div>
       </div>
     </header>
   );
 };
-
