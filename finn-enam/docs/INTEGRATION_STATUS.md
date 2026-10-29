@@ -34,3 +34,4 @@ FINN strictly follows the assignment rule: **Never fabricate financial values, s
   - If neither `DATABASE_URL` nor `GEMINI_API_KEY` is supplied, FINN enters **Grounded Demonstration Mode**.
   - All mathematical calculations, screening, Event Memory timelines, and research dossiers remain 100% functional, grounded in primary facts, and testable end-to-end.
   - System health (`GET /api/health`) explicitly flags `database.connected: false` and `ai.mode: "demonstration_fixtures"` to maintain honesty and transparency.
+

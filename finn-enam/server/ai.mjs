@@ -229,3 +229,4 @@ function fallbackGroundedExtraction({ sym, q, contextChunks, researchDossier }) 
     timestamp: new Date().toISOString()
   };
 }
+

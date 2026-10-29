@@ -49,3 +49,4 @@ This audit evaluates the current backend architecture, API endpoints, data persi
 - **AI Provider:** No external LLM SDK currently installed. Query answering uses deterministic pattern matching over primary document excerpts.
 - **Target Integration:** Google Gemini API (`@google/genai` or direct REST) configured via `GEMINI_API_KEY`, supporting structured JSON output, citation verification, and caching.
 - **Document Pipeline:** Needs database-backed `source_documents` and `document_chunks` with full-text search indexing.
+

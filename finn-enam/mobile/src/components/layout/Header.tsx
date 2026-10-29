@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-na
 import { LightColors, DarkColors } from '../../theme/colors';
 import { FontFamily, FontSize, FontWeight } from '../../theme/typography';
 import { Ionicons } from '@expo/vector-icons';
+import { FinnLogo } from '../common/FinnLogo';
 
 interface HeaderProps {
   watchlistCount: number;
@@ -26,8 +27,12 @@ export const Header: React.FC<HeaderProps> = ({
       <View style={[styles.container, { borderBottomColor: colors.border }]}>
         {/* Brand & Wordmark */}
         <View style={styles.brandContainer}>
-          <View style={[styles.logoBadge, { backgroundColor: colors.primary }]}>
-            <Text style={styles.logoText}>FN</Text>
+          <View style={styles.logoBadge}>
+            <FinnLogo
+              size={28}
+              primaryColor={isDark ? '#4ADE80' : colors.primary}
+              secondaryColor={isDark ? '#34D399' : '#187653'}
+            />
           </View>
           <View style={styles.brandTextContainer}>
             <View style={styles.titleRow}>
@@ -116,18 +121,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   logoBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  logoText: {
-    fontFamily: FontFamily.mono,
-    fontSize: 12,
-    fontWeight: FontWeight.bold,
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
   },
   brandTextContainer: {
     justifyContent: 'center',

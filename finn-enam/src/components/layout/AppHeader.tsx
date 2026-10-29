@@ -1,6 +1,7 @@
 import React from 'react';
 import { AppTheme, NavigationTab } from '../../types';
 import { Star, Sliders, Sun, Moon, Info } from 'lucide-react';
+import { FinnLogo } from '../common/FinnLogo';
 
 interface AppHeaderProps {
   activeTab: NavigationTab;
@@ -25,8 +26,12 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       <div className="mx-auto flex max-w-4xl items-center justify-between">
         {/* Brand & Wordmark */}
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-forest text-white font-bold text-xs tracking-wider shadow-sm font-mono">
-            FN
+          <div className="flex h-8 w-8 items-center justify-center">
+            <FinnLogo
+              size={28}
+              primaryColor={theme === 'dark' ? '#4ADE80' : '#164E3B'}
+              secondaryColor={theme === 'dark' ? '#34D399' : '#187653'}
+            />
           </div>
           <div>
             <div className="flex items-center gap-1.5">

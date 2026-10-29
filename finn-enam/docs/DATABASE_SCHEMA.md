@@ -225,3 +225,4 @@ CREATE TABLE IF NOT EXISTS research_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_research_runs_ticker ON research_runs(ticker);
 ```
+
