@@ -13,6 +13,7 @@ import { MOCK_COMPANIES, DEMO_DATA_DISCLAIMER } from './data/companies';
 import { MOCK_ANNOUNCEMENTS, MOCK_TRIGGERED_ALERTS } from './data/announcements';
 import { MOCK_EVENT_MEMORY } from './data/eventMemory';
 import { DEFAULT_ALERT_SETTINGS } from './data/alertSettings';
+import { FinnApi } from './services/api';
 import { Sparkles, Bell, Search, History, ShieldCheck } from 'lucide-react';
 
 export function App() {
@@ -38,17 +39,53 @@ export function App() {
     }
   }, [theme]);
 
+  // Load live database-backed portfolio and settings on mount
+  useEffect(() => {
+    let isMounted = true;
+    async function loadBackendData() {
+      try {
+        const [backendCompanies, backendPrefs] = await Promise.all([
+          FinnApi.getPortfolio(),
+          FinnApi.getAlertPreferences()
+        ]);
+        if (isMounted) {
+          if (backendCompanies && backendCompanies.length > 0) {
+            setCompanies(backendCompanies);
+          }
+          if (backendPrefs) {
+            setAlertSettings((prev) => ({
+              ...prev,
+              priceMoveThresholdPercent: backendPrefs.priceChangeThreshold ?? prev.priceMoveThresholdPercent,
+              volumeSpikeMultiplier: backendPrefs.volumeThreshold ?? prev.volumeSpikeMultiplier
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Backend load notice:', err);
+      }
+    }
+    loadBackendData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
 
   // Toggle company watchlist status
-  const handleToggleWatchlist = (ticker: string) => {
+  const handleToggleWatchlist = async (ticker: string) => {
     setCompanies((prev) =>
       prev.map((c) =>
         c.ticker === ticker ? { ...c, inWatchlist: !c.inWatchlist } : c
       )
     );
+    try {
+      await FinnApi.toggleWatchlist(ticker);
+    } catch {
+      // Handled gracefully
+    }
   };
 
   // Cross-Navigation Handlers

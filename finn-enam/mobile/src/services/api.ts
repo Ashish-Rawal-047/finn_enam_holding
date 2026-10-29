@@ -19,22 +19,48 @@ export interface GroundedAnswer {
   citation: string;
   grounded: boolean;
   timestamp: string;
+  confidence?: number;
+  source?: string;
 }
 
 export const FinnMobileApi = {
+  /**
+   * Health & Provenance check
+   */
+  async getHealth() {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(`${API_BASE}/health`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Offline fallback
+    }
+    return null;
+  },
+
   /**
    * Fetch portfolio companies with current prices, volume ratios, and watchlist states
    */
   async getPortfolio(watchlistOnly = false): Promise<Company[]> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
       const res = await fetch(`${API_BASE}/portfolio${watchlistOnly ? '?watchlistOnly=true' : ''}`, {
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
       if (res.ok) {
-        return await res.json();
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          return data;
+        }
+        if (data && Array.isArray(data.companies)) {
+          return data.companies;
+        }
       }
     } catch {
       // Fallback to offline fixtures
@@ -43,13 +69,37 @@ export const FinnMobileApi = {
   },
 
   /**
+   * Search companies
+   */
+  async searchCompanies(query: string): Promise<Partial<Company>[]> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        return data.results || [];
+      }
+    } catch {
+      // Fallback
+    }
+    const q = query.toLowerCase();
+    return MOCK_COMPANIES.filter((c) => c.ticker.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+  },
+
+  /**
    * Toggle watchlist status on the backend
    */
   async toggleWatchlist(ticker: string): Promise<boolean> {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
       const res = await fetch(`${API_BASE}/portfolio/${encodeURIComponent(ticker)}/watchlist`, {
         method: 'POST',
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (res.ok) {
         const data = await res.json();
         return data.inWatchlist;
@@ -82,6 +132,67 @@ export const FinnMobileApi = {
       // Offline fallback
     }
     return MOCK_ANNOUNCEMENTS;
+  },
+
+  /**
+   * Dynamic Anomaly Evaluator
+   */
+  async evaluateAnomalies(priceThreshold = 3.0, volumeThreshold = 2.0) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(`${API_BASE}/alerts/evaluate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priceThreshold, volumeThreshold }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return null;
+  },
+
+  /**
+   * Alert Sensitivity Preferences
+   */
+  async getAlertPreferences() {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(`${API_BASE}/settings/alerts`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return null;
+  },
+
+  async updateAlertPreferences(prefs: any) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(`${API_BASE}/settings/alerts`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prefs),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return null;
   },
 
   /**
@@ -133,6 +244,47 @@ export const FinnMobileApi = {
   },
 
   /**
+   * Fetch Event Memory History
+   */
+  async getEventHistory(ticker: string) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(`${API_BASE}/events/${encodeURIComponent(ticker)}/history`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return null;
+  },
+
+  /**
+   * Add subsequent observation
+   */
+  async addEventObservation(observationData: any) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch(`${API_BASE}/events/observations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(observationData),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return null;
+  },
+
+  /**
    * Fetch in-depth company research dossier grounded in primary disclosures
    */
   async getResearch(ticker: string, companyName?: string, sector?: string): Promise<CompanyResearch> {
@@ -156,7 +308,7 @@ export const FinnMobileApi = {
   async queryResearch(ticker: string, query: string): Promise<GroundedAnswer | null> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const timeoutId = setTimeout(() => controller.abort(), 3500);
       const res = await fetch(`${API_BASE}/research/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -172,4 +324,22 @@ export const FinnMobileApi = {
     }
     return null;
   },
+
+  /**
+   * Live or EOD quote
+   */
+  async getMarketQuote(ticker: string) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${API_BASE}/market/quote/${encodeURIComponent(ticker)}`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Fallback
+    }
+    return null;
+  }
 };

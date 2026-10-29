@@ -5,6 +5,12 @@
 
 import { Platform } from 'react-native';
 
+const sansFont = Platform.select({
+  ios: '-apple-system',
+  android: 'sans-serif',
+  default: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif",
+});
+
 export const FontFamily = {
   // Editorial display serif
   display: Platform.select({
@@ -13,11 +19,9 @@ export const FontFamily = {
     default: "'DM Serif Display', Georgia, 'Times New Roman', serif",
   }),
   // Clean UI sans-serif
-  sans: Platform.select({
-    ios: '-apple-system',
-    android: 'sans-serif',
-    default: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif",
-  }),
+  sans: sansFont,
+  ui: sansFont,
+  body: sansFont,
   // Financial numbers & ticker codes
   mono: Platform.select({
     ios: 'Menlo',
@@ -31,10 +35,16 @@ export const FontSize = {
   h1: 24,
   h2: 20,
   h3: 17,
+  title: 17,
+  subhead: 15,
   bodyLarge: 15,
   body: 13,
   caption: 11,
   tiny: 10,
+  sm: 13,
+  md: 15,
+  lg: 17,
+  xl: 20,
 };
 
 export const FontWeight = {
@@ -43,4 +53,3 @@ export const FontWeight = {
   semibold: '600' as const,
   bold: '700' as const,
 };
-

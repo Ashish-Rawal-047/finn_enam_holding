@@ -1,6 +1,7 @@
 /**
  * FINN REST API Server
- * Provides deterministic and live endpoints for the Financial Investment Agent.
+ * Complete Backend Connection & Database Integration
+ * ENAM AI Engineer Build Challenge
  */
 
 import express from 'express';
@@ -8,13 +9,25 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {
-  EOD_BASELINE_DATE,
-  DEMO_DATA_DISCLAIMER,
-  COMPANIES,
-  ANNOUNCEMENTS,
-  EVENT_MEMORY,
-  RESEARCH_DATABASE
-} from './data.mjs';
+  initDb,
+  getDbHealth,
+  getCompanies,
+  searchCompanies,
+  toggleWatchlist,
+  setWatchlist,
+  getAlerts,
+  evaluateAnomalies,
+  getAlertPreferences,
+  updateAlertPreferences,
+  getEventMemories,
+  getEventMemoryHistory,
+  addEventObservation,
+  getResearch,
+  queryDocumentChunks,
+  saveResearchRun
+} from './db.mjs';
+import { getAiStatus, answerResearchQuery } from './ai.mjs';
+import { EOD_BASELINE_DATE, DEMO_DATA_DISCLAIMER } from './data.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,289 +38,352 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// In-memory mutable watchlist state
-let companiesState = [...COMPANIES];
+// Request logger
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      if (res.statusCode >= 400) {
+        console.warn(`[API] ${req.method} ${req.path} ${res.statusCode} (${duration}ms)`);
+      }
+    });
+  }
+  next();
+});
 
+// ============================================================================
 // 1. HEALTH & SYSTEM PROVENANCE
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    agent: 'FINN (Financial Investment Agent)',
-    version: '1.0.0',
-    eodBaseline: EOD_BASELINE_DATE,
-    primaryGrounding: true,
-    totalPortfolioCompanies: companiesState.length,
-    announcementsIndexed: ANNOUNCEMENTS.length,
-    commitmentsTracked: EVENT_MEMORY.length,
-    disclaimer: DEMO_DATA_DISCLAIMER
-  });
-});
+// ============================================================================
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbHealth = await getDbHealth();
+    const aiStatus = getAiStatus();
 
-// 2. PORTFOLIO & WATCHLIST UNIVERSE
-app.get('/api/portfolio', (req, res) => {
-  const { watchlistOnly } = req.query;
-  if (watchlistOnly === 'true') {
-    return res.json(companiesState.filter((c) => c.inWatchlist));
+    res.json({
+      status: 'ok',
+      agent: 'FINN (Financial Investment Agent)',
+      version: '1.0.0',
+      database: dbHealth,
+      ai: aiStatus,
+      marketData: {
+        eodBaselineDate: EOD_BASELINE_DATE,
+        liveProvider: 'Yahoo Finance (NSE)',
+        status: 'active'
+      },
+      primaryGrounding: true,
+      disclaimer: DEMO_DATA_DISCLAIMER,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ status: 'error', error: err.message });
   }
-  res.json(companiesState);
 });
 
-// Toggle Watchlist status for a ticker
-app.post('/api/portfolio/:ticker/watchlist', (req, res) => {
-  const { ticker } = req.params;
-  const company = companiesState.find((c) => c.ticker === ticker);
-  if (!company) {
-    return res.status(404).json({ error: `Company with ticker ${ticker} not found` });
+// AI Status endpoint
+app.get('/api/ai/status', (req, res) => {
+  res.json(getAiStatus());
+});
+
+// ============================================================================
+// 2. COMPANIES & WATCHLIST UNIVERSE
+// ============================================================================
+
+// Portfolio universe with summary statistics
+app.get('/api/portfolio', async (req, res) => {
+  try {
+    const watchlistOnly = req.query.watchlistOnly === 'true';
+    const sessionId = req.query.sessionId || 'default_session';
+    const data = await getCompanies({ watchlistOnly, sessionId });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  company.inWatchlist = !company.inWatchlist;
-  res.json({ ticker: company.ticker, inWatchlist: company.inWatchlist });
 });
 
-// 3. PUSH SIGNALS & ANNOUNCEMENTS
-app.get('/api/signals', (req, res) => {
-  const { window: timeWindow, category, severity } = req.query;
-  let filtered = [...ANNOUNCEMENTS];
+// Company Search (ticker, name, sector)
+app.get('/api/companies/search', async (req, res) => {
+  try {
+    const q = req.query.q || '';
+    const sessionId = req.query.sessionId || 'default_session';
+    const results = await searchCompanies(q, sessionId);
+    res.json({
+      query: q,
+      count: results.length,
+      results
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  if (timeWindow && timeWindow !== 'all') {
-    if (timeWindow === '24h') {
-      filtered = filtered.filter((a) => a.timeHorizon === '24h');
-    } else if (timeWindow === '48h') {
-      filtered = filtered.filter((a) => a.timeHorizon === '24h' || a.timeHorizon === '48h');
+// Toggle Watchlist status for a ticker (REST path param)
+app.post('/api/portfolio/:ticker/watchlist', async (req, res) => {
+  try {
+    const { ticker } = req.params;
+    const sessionId = req.body?.sessionId || req.query.sessionId || 'default_session';
+    const result = await toggleWatchlist(ticker, sessionId);
+    if (!result) {
+      return res.status(404).json({ error: `Company with ticker ${ticker} not found` });
     }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  if (category && category !== 'all') {
-    filtered = filtered.filter((a) => a.category === category);
-  }
-
-  if (severity && severity !== 'all') {
-    filtered = filtered.filter((a) => a.severity === severity);
-  }
-
-  res.json({
-    total: filtered.length,
-    items: filtered
-  });
 });
 
-// 4. DYNAMIC ANOMALY EVALUATOR
-app.post('/api/alerts/evaluate', (req, res) => {
-  const priceThreshold = parseFloat(req.body.priceThreshold || 3.0);
-  const volumeThreshold = parseFloat(req.body.volumeThreshold || 2.0);
+// Get Watchlist entries
+app.get('/api/watchlist', async (req, res) => {
+  try {
+    const sessionId = req.query.sessionId || 'default_session';
+    const data = await getCompanies({ watchlistOnly: true, sessionId });
+    res.json({
+      total: data.total,
+      companies: data.companies
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
-  const breaches = [];
-  companiesState.forEach((comp) => {
-    // Price variation breach
-    if (Math.abs(comp.changePercent) >= priceThreshold) {
-      breaches.push({
-        id: `alert-price-${comp.ticker}`,
-        ticker: comp.ticker,
-        companyName: comp.name,
-        type: 'price_move',
-        severity: Math.abs(comp.changePercent) >= priceThreshold * 1.5 ? 'critical' : 'high',
-        headline: `Price move of ${comp.changePercent > 0 ? '+' : ''}${comp.changePercent.toFixed(2)}% breached ±${priceThreshold}% threshold`,
-        triggerMetric: `${comp.changePercent > 0 ? '+' : ''}${comp.changePercent.toFixed(2)}%`,
-        explanation: `Daily price shift exceeds configured sensitivity of ±${priceThreshold}%. Traded volume ratio is ${comp.volumeRatio}x 20-DMA.`,
-        timestamp: 'EOD Verified',
-        isEod: true
-      });
+// Add company to watchlist
+app.post('/api/watchlist', async (req, res) => {
+  try {
+    const { ticker, sessionId = 'default_session' } = req.body;
+    if (!ticker) {
+      return res.status(400).json({ error: 'Ticker is required' });
+    }
+    const result = await setWatchlist(ticker, true, sessionId);
+    if (!result) {
+      return res.status(404).json({ error: `Company with ticker ${ticker} not found` });
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove company from watchlist
+app.delete('/api/watchlist/:ticker', async (req, res) => {
+  try {
+    const { ticker } = req.params;
+    const sessionId = req.body?.sessionId || req.query.sessionId || 'default_session';
+    const result = await setWatchlist(ticker, false, sessionId);
+    if (!result) {
+      return res.status(404).json({ error: `Company with ticker ${ticker} not found` });
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// 3. PUSH SIGNALS & ANOMALY ALERTS
+// ============================================================================
+
+// Alerts / Signals endpoint (supports both /api/signals and /api/alerts)
+const handleAlerts = async (req, res) => {
+  try {
+    const { window: timeWindow, category, severity, triggerType } = req.query;
+    const items = await getAlerts({ window: timeWindow, category, severity, triggerType });
+    res.json({
+      total: items.length,
+      items,
+      alerts: items
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+app.get('/api/signals', handleAlerts);
+app.get('/api/alerts', handleAlerts);
+
+// Dynamic Anomaly Evaluator (Deterministic formula: ABS(priceMove) >= threshold or volRatio >= threshold)
+app.post('/api/alerts/evaluate', async (req, res) => {
+  try {
+    const priceThreshold = parseFloat(req.body.priceThreshold || 3.0);
+    const volumeThreshold = parseFloat(req.body.volumeThreshold || 2.0);
+    const evaluation = await evaluateAnomalies(priceThreshold, volumeThreshold);
+    res.json(evaluation);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Alert Preferences / Sensitivity Settings
+app.get('/api/settings/alerts', async (req, res) => {
+  try {
+    const sessionId = req.query.sessionId || 'default_session';
+    const prefs = await getAlertPreferences(sessionId);
+    res.json(prefs);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const handleUpdateAlertSettings = async (req, res) => {
+  try {
+    const sessionId = req.body.sessionId || req.query.sessionId || 'default_session';
+    const updated = await updateAlertPreferences(sessionId, req.body);
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+app.put('/api/settings/alerts', handleUpdateAlertSettings);
+app.post('/api/settings/alerts', handleUpdateAlertSettings);
+
+// ============================================================================
+// 4. EVENT MEMORY LEDGER
+// ============================================================================
+
+// List Event Memory commitments
+const handleEventMemories = async (req, res) => {
+  try {
+    const { status, category, ticker } = req.query;
+    const items = await getEventMemories({ status, category, ticker });
+    res.json({
+      total: items.length,
+      items
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+app.get('/api/memory', handleEventMemories);
+app.get('/api/events', handleEventMemories);
+
+// Single commitment by ID
+app.get('/api/memory/:id', async (req, res) => {
+  try {
+    const items = await getEventMemories();
+    const item = items.find((m) => m.id === req.params.id);
+    if (!item) {
+      return res.status(404).json({ error: `Event Memory commitment ${req.params.id} not found` });
+    }
+    res.json(item);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Event commitment for a specific ticker
+app.get('/api/events/:ticker', async (req, res) => {
+  try {
+    const { ticker } = req.params;
+    const sym = ticker.toUpperCase();
+    const items = await getEventMemories({ ticker: sym });
+    if (items.length === 0) {
+      return res.status(404).json({ error: `No Event Memory commitment tracked for ${sym}` });
+    }
+    res.json(items[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Event history with full chronological observation chain
+app.get('/api/events/:ticker/history', async (req, res) => {
+  try {
+    const { ticker } = req.params;
+    const history = await getEventMemoryHistory(ticker);
+    if (!history) {
+      return res.status(404).json({ error: `No Event Memory commitment history tracked for ${ticker}` });
+    }
+    res.json(history);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add subsequent observation to an event memory
+app.post('/api/events/observations', async (req, res) => {
+  try {
+    const { eventMemoryId, observationDate, observationType, reportedUpdate, reportedValue, evidenceExcerpt, newStatus } = req.body;
+    if (!eventMemoryId) {
+      return res.status(400).json({ error: 'eventMemoryId is required' });
+    }
+    const result = await addEventObservation({
+      eventMemoryId,
+      observationDate,
+      observationType,
+      reportedUpdate,
+      reportedValue,
+      evidenceExcerpt,
+      newStatus
+    });
+    if (!result) {
+      return res.status(404).json({ error: `Event Memory commitment ${eventMemoryId} not found` });
+    }
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// 5. PRIMARY-SOURCE RESEARCH DOSSIER & AI Q&A
+// ============================================================================
+
+// 8-Domain Institutional Research Dossier
+app.get('/api/research/:ticker', async (req, res) => {
+  try {
+    const { ticker } = req.params;
+    const dossier = await getResearch(ticker);
+    res.json(dossier);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Grounded Primary-Source Q&A
+app.post('/api/research/query', async (req, res) => {
+  try {
+    const { ticker, query } = req.body;
+    if (!query || !query.trim()) {
+      return res.status(400).json({ error: 'Query parameter is required' });
     }
 
-    // Volume spike breach
-    if (comp.volumeRatio >= volumeThreshold) {
-      breaches.push({
-        id: `alert-vol-${comp.ticker}`,
-        ticker: comp.ticker,
-        companyName: comp.name,
-        type: 'volume_spike',
-        severity: comp.volumeRatio >= volumeThreshold * 1.4 ? 'critical' : 'high',
-        headline: `Volume spike of ${comp.volumeRatio.toFixed(2)}x 20-DMA crossed ${volumeThreshold}x trigger`,
-        triggerMetric: `${comp.volumeRatio.toFixed(2)}x Vol`,
-        explanation: `Exceptional institutional turnover significantly surpasses rolling 20-day moving average volume.`,
-        timestamp: 'EOD Verified',
-        isEod: true
-      });
-    }
-  });
+    const sym = (ticker || 'TRENT.NS').toUpperCase();
+    const contextChunks = await queryDocumentChunks(sym, query);
+    const researchDossier = await getResearch(sym);
 
-  res.json({
-    priceThreshold,
-    volumeThreshold,
-    totalBreaches: breaches.length,
-    alerts: breaches
-  });
+    // Call AI intelligence engine (Gemini with grounded fallback)
+    const result = await answerResearchQuery({
+      ticker: sym,
+      query,
+      contextChunks,
+      researchDossier
+    });
+
+    // Save research run audit log
+    await saveResearchRun({
+      ticker: sym,
+      query,
+      finding: result.finding,
+      citation: result.citation,
+      grounded: result.grounded,
+      confidence: result.confidence
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// 5. EVENT MEMORY INSTITUTIONAL LEDGER
-app.get('/api/memory', (req, res) => {
-  const { status, category } = req.query;
-  let items = [...EVENT_MEMORY];
-
-  if (status && status !== 'all') {
-    items = items.filter((m) => m.status === status);
-  }
-
-  if (category && category !== 'all') {
-    items = items.filter((m) => m.category === category);
-  }
-
-  res.json({
-    total: items.length,
-    items
-  });
-});
-
-app.get('/api/memory/:id', (req, res) => {
-  const item = EVENT_MEMORY.find((m) => m.id === req.params.id);
-  if (!item) {
-    return res.status(404).json({ error: `Event Memory commitment ${req.params.id} not found` });
-  }
-  res.json(item);
-});
-
-// 6. PRIMARY-SOURCE RESEARCH DOSSIER
-app.get('/api/research/:ticker', (req, res) => {
-  const { ticker } = req.params;
-  const sym = ticker.toUpperCase();
-
-  if (RESEARCH_DATABASE[sym]) {
-    return res.json(RESEARCH_DATABASE[sym]);
-  }
-
-  // Dynamic Generator for any NSE ticker (zero-shot)
-  const comp = companiesState.find((c) => c.ticker === sym);
-  const cleanName = comp ? comp.name : sym.replace('.NS', '');
-  const sector = comp ? comp.sector : 'Indian Listed Enterprise';
-
-  const generated = {
-    ticker: sym,
-    name: cleanName,
-    sector,
-    marketCap: '₹45,000 Cr',
-    businessSnapshot: {
-      summary: `${cleanName} is an established Indian corporate listed on the NSE/BSE. Grounded directly in primary disclosures and official exchange filings.`,
-      segments: [
-        { name: 'Core Domestic Operations', sharePercent: 74, growthYoY: 16 },
-        { name: 'Exports & Value-Added Solutions', sharePercent: 26, growthYoY: 22 }
-      ],
-      keyMoat: 'Established distribution footprint, high vendor reliability, and consistent capital efficiency.'
-    },
-    financialSnapshot: {
-      revenueTtm: '₹8,450 Cr',
-      ebitdaMargin: '16.8%',
-      roce: '21.4%',
-      roe: '18.2%',
-      debtToEquity: '0.22x',
-      workingCapitalDays: 38,
-      fcfTtm: '₹680 Cr',
-      cfoPatConversion: 1.10
-    },
-    narrativeVsNumbers: [
-      {
-        period: 'Q2 FY25',
-        managementGuidance: 'Targeted mid-teens revenue growth and margin stabilization.',
-        actualDelivered: 'Delivered +16.2% YoY growth with 16.8% EBITDA margin.',
-        variance: 'In line with stated targets',
-        varianceType: 'met',
-        sourceDoc: 'Q2 FY25 Exchange Disclosure'
-      }
-    ],
-    guidanceLedger: [
-      {
-        metric: 'Revenue Growth',
-        managementStatement: 'Reiterating 15–18% compound top-line growth over medium term.',
-        targetPeriod: 'FY25–26',
-        concallSource: 'Annual Analyst Meet'
-      }
-    ],
-    cashQualityAnalysis: {
-      cfoVsPatCommentary: 'Consistent operating cash conversion with healthy balance sheet liquidity.',
-      workingCapitalTrend: 'Working capital days maintained steady at 38 days.',
-      fcfYield: '2.1% Free Cash Flow yield.',
-      redFlagsDetected: false
-    },
-    bullBear: {
-      bullCase: [
-        'Robust domestic demand drivers and strong market positioning within peer sector.',
-        'Prudent capital allocation with manageable leverage and healthy dividend payout policy.'
-      ],
-      bearCase: [
-        'Input cost inflation or raw material supply chain fluctuations could temporarily compress margins.',
-        'Broader macroeconomic cyclicality may affect customer capital expenditure cycles.'
-      ]
-    },
-    primarySources: [
-      {
-        title: `${cleanName} Annual Report FY24`,
-        type: 'Annual Report',
-        period: 'FY 2023-24',
-        url: `https://www.screener.in/company/${sym.replace('.NS', '')}/`
-      }
-    ]
-  };
-
-  res.json(generated);
-});
-
-// 7. PRIMARY-SOURCE GROUNDED QUESTION ANSWERING
-app.post('/api/research/query', (req, res) => {
-  const { ticker, query } = req.body;
-  if (!query) {
-    return res.status(400).json({ error: 'Query parameter is required' });
-  }
-
-  const sym = (ticker || 'TRENT.NS').toUpperCase();
-  const research = RESEARCH_DATABASE[sym] || {
-    ticker: sym,
-    name: sym,
-    financialSnapshot: { ebitdaMargin: '16.5%', roce: '20.0%', debtToEquity: '0.2x', workingCapitalDays: 35, fcfTtm: '₹500 Cr', cfoPatConversion: 1.1 },
-    businessSnapshot: { keyMoat: 'Market presence & operational scale', summary: 'Grounded primary facts' },
-    guidanceLedger: [],
-    cashQualityAnalysis: { cfoVsPatCommentary: 'Stable cash flow generation.' },
-    bullBear: { bullCase: ['Strong market share'], bearCase: ['Macro headwinds'] },
-    narrativeVsNumbers: []
-  };
-
-  const q = query.toLowerCase();
-  let finding = '';
-  let citation = '';
-
-  if (q.includes('margin') || q.includes('ebitda') || q.includes('profitab')) {
-    finding = `Consolidated EBITDA margin currently stands at ${research.financialSnapshot.ebitdaMargin} (ROCE: ${research.financialSnapshot.roce}). Management guidance indicates continued operating leverage and strict cost discipline.`;
-    citation = 'Audited Financial Statements & Regulatory Press Release';
-  } else if (q.includes('working capital') || q.includes('cash') || q.includes('cfo')) {
-    finding = `${research.cashQualityAnalysis.cfoVsPatCommentary} Working capital cycle is ${research.financialSnapshot.workingCapitalDays} days. TTM Free Cash Flow is ${research.financialSnapshot.fcfTtm}.`;
-    citation = 'Audited Cash Flow Statement (Indirect Method)';
-  } else if (q.includes('capex') || q.includes('store') || q.includes('capacity')) {
-    finding = `Expansion is supported directly through internal accruals with debt-to-equity at a conservative ${research.financialSnapshot.debtToEquity}.`;
-    citation = 'Management Discussion & Analysis (MD&A) Circular';
-  } else if (q.includes('bull') || q.includes('upside') || q.includes('thesis')) {
-    finding = `Key upside driver: ${research.bullBear.bullCase[0]} Primary moat: ${research.businessSnapshot.keyMoat}`;
-    citation = 'Segmental Disclosures & Investor Presentation';
-  } else if (q.includes('bear') || q.includes('risk') || q.includes('downside')) {
-    finding = `Primary risk factor: ${research.bullBear.bearCase[0]}`;
-    citation = 'Statutory Risk Factors & Auditor Notes';
-  } else {
-    finding = `${research.businessSnapshot.summary} Financial position: Revenue TTM is ${research.financialSnapshot.revenueTtm || 'Robust'}, EBITDA margin is ${research.financialSnapshot.ebitdaMargin}.`;
-    citation = 'Primary Corporate Disclosures under Regulation 30 & 33';
-  }
-
-  res.json({
-    ticker: sym,
-    query,
-    finding,
-    citation,
-    grounded: true,
-    timestamp: new Date().toISOString()
-  });
-});
-
-// 8. LIVE / FALLBACK MARKET QUOTE FETCHER
+// ============================================================================
+// 6. LIVE / FALLBACK MARKET QUOTE FETCHER
+// ============================================================================
 app.get('/api/market/quote/:ticker', async (req, res) => {
   const { ticker } = req.params;
   const sym = ticker.toUpperCase();
 
-  // Try live fetch with 2s timeout
+  // 1. Try Yahoo Finance live fetch with 2s timeout
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 2000);
@@ -318,7 +394,7 @@ app.get('/api/market/quote/:ticker', async (req, res) => {
     if (response.ok) {
       const data = await response.json();
       const meta = data?.chart?.result?.[0]?.meta;
-      if (meta) {
+      if (meta && meta.regularMarketPrice) {
         return res.json({
           ticker: sym,
           source: 'Yahoo Finance Live',
@@ -333,23 +409,30 @@ app.get('/api/market/quote/:ticker', async (req, res) => {
     // Fall back smoothly to cached baseline
   }
 
-  // Baseline fallback
-  const comp = companiesState.find((c) => c.ticker === sym);
-  if (comp) {
-    return res.json({
-      ticker: sym,
-      source: 'Deterministic EOD Baseline',
-      price: comp.currentPrice,
-      changePercent: comp.changePercent,
-      volumeRatio: comp.volumeRatio,
-      timestamp: EOD_BASELINE_DATE
-    });
+  // 2. Baseline fallback from database
+  try {
+    const companiesData = await getCompanies();
+    const comp = companiesData.companies.find((c) => c.ticker === sym);
+    if (comp) {
+      return res.json({
+        ticker: sym,
+        source: 'Deterministic EOD Baseline',
+        price: comp.currentPrice,
+        changePercent: comp.changePercent,
+        volumeRatio: comp.volumeRatio,
+        timestamp: EOD_BASELINE_DATE
+      });
+    }
+  } catch (err) {
+    // Continue to 404
   }
 
-  res.status(404).json({ error: `Ticker ${sym} not found` });
+  res.status(404).json({ error: `Ticker ${sym} not found in database or live exchange feed` });
 });
 
-// 9. SERVE STATIC ASSETS IN PRODUCTION
+// ============================================================================
+// 7. SERVE STATIC ASSETS IN PRODUCTION
+// ============================================================================
 const distPath = path.join(__dirname, '..', 'dist');
 app.use(express.static(distPath));
 
@@ -360,9 +443,21 @@ app.use((req, res, next) => {
   res.sendFile(path.join(distPath, 'index.html'));
 });
 
-// Start Server
-app.listen(PORT, () => {
-  console.log(`[FINN API] REST Server listening on port ${PORT}`);
-  console.log(`[FINN API] Primary Grounding Active: EOD Baseline ${EOD_BASELINE_DATE}`);
-  console.log(`[FINN API] Health check at http://localhost:${PORT}/api/health`);
+// ============================================================================
+// 8. SERVER INITIALIZATION
+// ============================================================================
+async function startServer() {
+  // Initialize Database connection / migrations
+  await initDb();
+
+  app.listen(PORT, () => {
+    console.log(`[FINN API] REST Server successfully listening on port ${PORT}`);
+    console.log(`[FINN API] Health check endpoint: http://localhost:${PORT}/api/health`);
+    console.log(`[FINN API] EOD Baseline Date: ${EOD_BASELINE_DATE}`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error('[FINN API] Fatal error starting server:', err);
+  process.exit(1);
 });

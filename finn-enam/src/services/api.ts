@@ -1,5 +1,5 @@
 /**
- * FINN API Client Layer
+ * FINN API Client Layer (Web)
  * Connects to the Express REST API with graceful instant offline fallback to local fixtures.
  */
 
@@ -18,9 +18,47 @@ export interface GroundedAnswer {
   citation: string;
   grounded: boolean;
   timestamp: string;
+  source?: string;
+  confidence?: number;
+}
+
+export interface SystemHealth {
+  status: string;
+  agent: string;
+  version: string;
+  database: {
+    connected: boolean;
+    provider: string;
+    tablesInitialized: boolean;
+  };
+  ai: {
+    configured: boolean;
+    provider: string;
+    mode: string;
+  };
+  marketData: {
+    eodBaselineDate: string;
+    liveProvider: string;
+    status: string;
+  };
 }
 
 export const FinnApi = {
+  /**
+   * Health & Provenance check
+   */
+  async getHealth(): Promise<SystemHealth | null> {
+    try {
+      const res = await fetch(`${API_BASE}/health`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Offline fallback
+    }
+    return null;
+  },
+
   /**
    * Fetch portfolio companies with current prices, volume ratios, and watchlist states
    */
@@ -28,12 +66,35 @@ export const FinnApi = {
     try {
       const res = await fetch(`${API_BASE}/portfolio${watchlistOnly ? '?watchlistOnly=true' : ''}`);
       if (res.ok) {
-        return await res.json();
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          return data;
+        }
+        if (data && Array.isArray(data.companies)) {
+          return data.companies;
+        }
       }
     } catch {
       // Fallback to offline fixtures
     }
     return watchlistOnly ? MOCK_COMPANIES.filter((c) => c.inWatchlist) : MOCK_COMPANIES;
+  },
+
+  /**
+   * Search companies by ticker or name
+   */
+  async searchCompanies(query: string): Promise<Partial<Company>[]> {
+    try {
+      const res = await fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(query)}`);
+      if (res.ok) {
+        const data = await res.json();
+        return data.results || [];
+      }
+    } catch {
+      // Fallback
+    }
+    const q = query.toLowerCase();
+    return MOCK_COMPANIES.filter((c) => c.ticker.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
   },
 
   /**
@@ -76,6 +137,56 @@ export const FinnApi = {
   },
 
   /**
+   * Dynamic Anomaly Evaluator
+   */
+  async evaluateAnomalies(priceThreshold = 3.0, volumeThreshold = 2.0) {
+    try {
+      const res = await fetch(`${API_BASE}/alerts/evaluate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ priceThreshold, volumeThreshold })
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Offline fallback
+    }
+    return null;
+  },
+
+  /**
+   * Alert Sensitivity Preferences
+   */
+  async getAlertPreferences() {
+    try {
+      const res = await fetch(`${API_BASE}/settings/alerts`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Offline fallback
+    }
+    return null;
+  },
+
+  async updateAlertPreferences(prefs: any) {
+    try {
+      const res = await fetch(`${API_BASE}/settings/alerts`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(prefs)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Offline fallback
+    }
+    return null;
+  },
+
+  /**
    * Fetch Event Memory ledger items
    */
   async getEventMemory(status?: string, category?: string): Promise<EventMemoryItem[]> {
@@ -93,6 +204,40 @@ export const FinnApi = {
       // Offline fallback
     }
     return MOCK_EVENT_MEMORY;
+  },
+
+  /**
+   * Fetch full observation history chain for a ticker
+   */
+  async getEventHistory(ticker: string) {
+    try {
+      const res = await fetch(`${API_BASE}/events/${encodeURIComponent(ticker)}/history`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Offline fallback
+    }
+    return null;
+  },
+
+  /**
+   * Add subsequent observation
+   */
+  async addEventObservation(observationData: any) {
+    try {
+      const res = await fetch(`${API_BASE}/events/observations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(observationData)
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Offline fallback
+    }
+    return null;
   },
 
   /**
@@ -128,5 +273,19 @@ export const FinnApi = {
     }
     return null;
   },
-};
 
+  /**
+   * Fetch quote
+   */
+  async getMarketQuote(ticker: string) {
+    try {
+      const res = await fetch(`${API_BASE}/market/quote/${encodeURIComponent(ticker)}`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch {
+      // Offline fallback
+    }
+    return null;
+  }
+};

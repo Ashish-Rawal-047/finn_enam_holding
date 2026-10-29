@@ -123,7 +123,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={[styles.rootContainer, { backgroundColor: colors.background }]}>
-      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
 
       {/* Top Header */}
       <Header
