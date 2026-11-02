@@ -1,207 +1,172 @@
-# FINN: Institutional Financial Investment Agent
-**ENAM Holdings — AI Engineer Build Challenge**
-*Submission Email: `assessment@enam.com` | Subject: `ENAM - IIT screening - 2027`*
-*Target Evaluation Date: Sunday, November 1, 2026 | Build Date: October 29, 2026*
+# FINN — Financial Investment Agent (ENAM Holdings)
 
----
+A mobile investment-intelligence app (on a laptop it opens as the same app in a centred, phone-width frame) with five bottom-navigation tabs: **Home** (Recent Filings and materiality-ranked Portfolio Alerts), **Signals** (portfolio monitor and charts), **Research** (structured, evidence-linked company research), **Event Memory** (corporate commitments tracked to evidenced outcomes, with historical-precedent detection) and **Settings**.
 
-## 1. Executive Summary & Design Philosophy
+* **Frontend:** React 18 · Vite · TypeScript · Tailwind · Lucide · TanStack Query
+* **Backend:** Node · Express 5 · TypeScript · Drizzle ORM
+* **Neon:** Lakebase Postgres with pgvector, Realtime
+* **Market data:** Yahoo Finance through `yfinance` (Python bridge)
+* **AI:** configurable provider (Neon AI Gateway, Anthropic, OpenAI, Google or any OpenAI-compatible endpoint) through the AI SDK
 
-FINN is a mobile-first investment intelligence companion purpose-built for high-conviction public market investors. Rather than acting as another overwhelming dashboard widget collector, FINN embraces the philosophy of **"Quiet Luxury Meets Investment Intelligence"**:
+**Read first: what is live and what is demo**
 
-> **"Show the conclusion first. Reveal details on demand. Filter the noise before the investor opens the app."**
+* **Yahoo Finance (real, delayed):** company profiles, quotes, daily price history and annual/quarterly statements come from Yahoo Finance via `yfinance`. Quotes are labelled *End-of-day close* or *Delayed ~N min*; this is never presented as real-time. Statements keep the currency Yahoo reports (Infosys files in USD); nothing is converted. Ratios are calculated by FINN and labelled as calculations.
+* **Demo:** corporate announcements (no licensed free NSE/BSE filings feed is wired), Event Memory seed events, and any company Yahoo cannot resolve (currently Tata Motors, see below). Demo rows are flagged `is_demo` and labelled "Demo data".
+* **Real records:** users, portfolios, watchlists, alert settings, notifications and read state, research reports and Event Memory edits, persisted in Neon.
+* **AI (real, when configured):** research analysis, event classification, commitment extraction, semantic matching and precedent comparison run on the provider in `backend/.env` (see *AI research*). Without a provider, research shows reported facts and calculated metrics only and marks the AI sections "Unavailable"; nothing is simulated.
+* `yfinance` is an unofficial client of Yahoo's public endpoints, suitable for research and personal use. For commercial redistribution, use a licensed provider through the same adapter interface.
 
-### Core Architectural Pillars
-1. **PUSH (Proactive Intelligence):** Windowed digest (24h/48h/7d) of corporate exchange announcements mapped to the 17 taxonomy categories, coupled with real-time price and volume anomaly alerts ($\pm X\%$ and $Y\times$ 20-DMA).
-2. **PULL (Primary-Source Research):** Deep corporate fundamentals strictly grounded in Annual Reports, audited financial releases, and concall transcripts. Zero broker notes, secondary rumors, or hallucinated AI commentary.
-3. **EVENT MEMORY™ (Signature Innovation):** An institutional commitment tracker recording management promises (capex programs, store rollout deadlines, margin targets) and continuously cross-referencing subsequent quarterly audited deliveries against historical promises.
-4. **Neon PostgreSQL Database Integration:** Automated idempotent DDL migrations for 9 relational tables, connection pooling with SSL, and query timeouts.
-5. **Google Gemini 2.0 AI Extraction:** Real-time structured primary document Q&A and research extraction with strict citation enforcement and zero hallucination.
-6. **Deterministic Demonstration Reliability:** Seamlessly runs out-of-the-box with bundled deterministic fixtures across 22 companies and 4 ad-hoc research companies. If `DATABASE_URL` or `GEMINI_API_KEY` is not provided, the application runs gracefully in resilient In-Memory Grounded Mode without failing. Zero demo crash risk.
+## Reviewer demo access
 
----
+Open the app and the login page already holds the reviewer demo credentials; press **Sign in to demo** (or **Sign in**). Nothing is submitted automatically, and the fields can be cleared for a normal login.
 
-## 2. Quick Start & Execution
+| | |
+| --- | --- |
+| Email | `reviewer@finn.demo` |
+| Password | `FinnReview2026!` |
 
-FINN includes both a **Native Mobile Application (React Native + Expo)** and an integrated **Node.js / Express REST API backend** with web fallback.
+These credentials are public on purpose. They belong to a dedicated, shared demo account (not a personal one) holding the 18-company demonstration portfolio. The API enforces its limits:
 
-### A. Run Backend API Server (Port 3001)
+* the profile, password and other reviewers' sessions cannot be changed, and other reviewers' sessions are not listed;
+* shared Event Memory records cannot be created or edited;
+* the account's own portfolio, watchlists, alert settings, read state and favourites can be changed (they are shared by everyone using the demo login);
+* with `DEMO_MODE_ENABLED=false` the account cannot sign in at all.
 
-```bash
-# 1. Navigate to the project root
-cd finn-enam
+The account is created or updated idempotently at API start-up (when demo mode is on) and by `npm run demo:seed`; re-running never creates a duplicate, and an existing personal account with the same email is never taken over.
 
-# 2. Install dependencies (if not already installed)
-npm install
+## Prerequisites
 
-# 3. (Optional) Configure environment variables for live Neon PostgreSQL & Gemini
-cp .env.example .env
-# Edit .env with your DATABASE_URL and GEMINI_API_KEY
+* Node.js ≥ 22. The Neon CLI's `neon skills` subcommand needs 22.20 or newer; the app itself runs on 22.17.
+* The Neon CLI (`npm i -g neon`), signed in with `neon login`.
+* Python ≥ 3.9 for the Yahoo Finance bridge.
 
-# 4. Start the Express REST Server (Port 3001)
-npm start
-# Health check: http://localhost:3001/api/health
-```
-
-### B. Run Native Mobile App (React Native & Expo — Port 8081)
+## Setup
 
 ```bash
-# 1. Navigate to mobile app directory
-cd finn-enam/mobile
-
-# 2. Start Expo Metro bundler
-npm run web
-# Opens at http://localhost:8081/
-
-# --- OR ---
-# Start native iOS/Android development client
-npx expo start
+npm install                      # installs frontend + backend (postinstall)
+neon login                       # once
+neon deploy                      # provisions neon.ts services; writes DATABASE_URL, NEON_* to .env.local
+cp backend/.env.example backend/.env
+#   then set JWT_SECRET and JWT_REFRESH_SECRET (the command to generate them is in the file)
+python -m venv backend/python/.venv
+backend/python/.venv/bin/pip install -r backend/python/requirements.txt
+#   on Windows: backend\python\.venv\Scripts\pip install -r backend\python\requirements.txt
+npm run db:migrate               # pgvector + schema (direct connection)
+npm run db:seed                  # demo universe, history, filings, Event Memory, research
 ```
 
-### C. Run Web Application Client (Vite Dev Server — Port 5173)
+To enable the reviewer demo login locally, set `DEMO_MODE_ENABLED=true`, `DEMO_USER_EMAIL` and `DEMO_USER_PASSWORD` in `backend/.env`, and the matching `VITE_DEMO_LOGIN_ENABLED=true`, `VITE_DEMO_EMAIL` and `VITE_DEMO_PASSWORD` in a root `.env` (see the two `.env.example` files). Restart the API and Vite afterwards.
+
+## AI research
+
+Set these in `backend/.env` (never in frontend code), then restart the API:
 
 ```bash
-cd finn-enam
-npm run dev
-# Opens at http://localhost:5173/
+AI_PROVIDER=google           # or anthropic | openai | openai-compatible | neon
+AI_API_KEY=...               # not needed for neon
+AI_MODEL=gemini-3.5-flash-lite        # fast tier + fallback
+AI_REASONING_MODEL=gemini-3.5-flash   # research synthesis (optional, defaults to AI_MODEL)
+AI_EMBEDDING_MODEL=gemini-embedding-001  # optional: semantic Event Memory matching
+AI_BASE_URL=                 # openai-compatible only
 ```
 
-### D. Run Automated Backend Test Suite
+At startup the API logs the provider and checks that each model is served to the key (for Gemini this is a metadata lookup that uses no generation quota). `GET /api/ai/status` returns the same check; `GET /api/ai/usage` returns your requests, tokens and latency.
+
+How AI is used, and kept honest:
+
+* **Research** runs as three analysis groups in parallel (business; financial strength, cash, commitments and guidance; bull/bear, risks and summary), each over a compact, numbered evidence pack built from stored statements, calculated metrics, filings and events. Every point must cite evidence ids; points that cite unknown evidence, or quote figures absent from the cited evidence, are dropped and counted in the report's limitations.
+* **Event Memory**: new announcements are classified and their commitments extracted (AI numbers and dates are kept only when they appear in the source text); events are embedded for semantic matching; the top precedents get an AI comparison written only from the two stored records. Outcomes always come from FINN's execution records, never from the model.
+* **Failures** are classified (invalid key, exhausted quota, rate limit, overload, timeout, unavailable model, malformed response, network). Transient ones are retried with bounded exponential backoff. If the reasoning model is overloaded or out of quota, the fast model is used once and the report says so; a model with an exhausted quota is skipped until its reset time. Facts and metrics are never blocked by AI failures.
+* **Free tiers**: Gemini's free tier allows very few requests per model per day (20 for `gemini-3.5-flash` on the key tested). A research report uses three requests; unchanged reports are reused rather than regenerated. Use a paid tier for regular use.
+* To backfill AI for events stored before a provider was configured: `npm --prefix backend run jobs:run -- event-intelligence`.
+
+## Local development
 
 ```bash
-cd finn-enam
-npm test
-# Runs 60 institutional assertions across all 18 API routes, anomaly math, and Event Memory
+npm run dev:api     # API on http://localhost:3001 (tsx watch; runs the scheduler)
+npm run dev         # web on http://localhost:5173 (proxies /api to :3001)
 ```
 
-### Verified Local Ports
-- **Expo Mobile Web Preview:** `http://localhost:8081/` (Genuine React Native mobile app)
-- **Unified Production Server:** `http://localhost:3001/` (Express REST API + static production bundle)
-- **Vite Dev Client:** `http://localhost:5173/`
-- **API Health Endpoint:** `http://localhost:3001/api/health`
+Open http://localhost:5173 and register. On Home, **Load the demo portfolio** to start tracking.
 
----
+To run ingestion jobs by hand: `npm --prefix backend run jobs:run -- market`, `... -- announcements` or `... -- event-intelligence`.
 
-## 3. Database Architecture & Schema Migrations
+To measure research latency per stage against the real providers: `cd backend && npx tsx scripts/bench-research.ts ITC.NS RELIANCE.NS` (set `BENCH_SKIP_WARM=1` to save AI quota).
 
-FINN integrates **Neon Hosted PostgreSQL** using `pg` (node-postgres) with connection pooling and SSL (`rejectUnauthorized: false`).
+## Tests
 
-### Automated Idempotent Migrations (`server/db.mjs`)
-When the backend starts with `DATABASE_URL` configured, it automatically checks connectivity, runs idempotent DDL statements (`CREATE TABLE IF NOT EXISTS`), and seeds initial institutional datasets if tables are empty.
-
-The schema comprises 9 relational tables:
-1. `companies` — Tickers, BSE codes, names, sectors, market caps, prices, change %, volume ratios, sparklines, IR links.
-2. `watchlist_entries` — Session-based watchlist membership with unique constraints.
-3. `source_documents` — Official primary statutory filings (Annual Reports, Concall Transcripts, Regulation 30/33 disclosures).
-4. `event_memories` — Signature corporate commitment records with targets, deadlines, and statuses (`delivered`, `pending`, `delayed`, `revised`).
-5. `event_observations` — Chronological evidence chain recording subsequent disclosures without erasing earlier observations.
-6. `alerts` — Prioritized regulatory disclosures, earnings releases, and anomaly breaches.
-7. `alert_preferences` — User-configured sensitivity thresholds (price move %, volume spike multiplier, digest window).
-8. `document_chunks` — Pre-chunked filing segments for full-text search and grounded Q&A extraction.
-9. `research_runs` — Audit log of investor research queries, findings, citations, and confidence scores.
-
-### Resilient Degradation Guarantee
-If `DATABASE_URL` is omitted or temporarily unreachable, FINN logs an informative notice and transparently activates its **In-Memory Grounded Repository**, which mirrors 100% of the query methods and mutations in memory. `/api/health` honestly reports `database.connected: false` while the user interface and API continue running without crashing.
-
----
-
-## 4. Google Gemini 2.0 AI Integration (`server/ai.mjs`)
-
-FINN connects to Google Gemini 2.0 (`gemini-2.0-flash`) for real-time structured primary document extraction.
-
-### Strict Grounding Principles
-- **System Instruction:** FINN is instructed as an institutional equity research assistant that grounds every response strictly in verified primary evidence.
-- **Zero Hallucination:** The model is prohibited from fabricating forward metrics, dates, or margin figures. If a metric is not disclosed, it states so explicitly.
-- **Structured JSON Output:** Responses are returned with `{ finding, citation, confidence, grounded: true }`.
-- **Deterministic Fallback:** If `GEMINI_API_KEY` is not provided or network is offline, FINN uses a deterministic primary-source extractor matching financial concepts against verified regulatory excerpts.
-
----
-
-## 5. Product Tour: 4 Core Institutional Destinations
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                          APP HEADER                         │
-│  [FN] FINN ENAM INTEL   [EOD OCT 28]  [★ 18]  [⚙]  [☼/☾]   │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  [TODAY]          [SIGNALS]       [RESEARCH]      [MEMORY]  │
-│  Morning          Alert Inbox     Primary Deep    Account-  │
-│  Briefing         & Triage        Dives & Q&A     ability   │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```bash
+npm run typecheck            # frontend + backend TypeScript
+npm test                     # backend unit tests (alert maths, dedup, similarity, execution, parsing, AI grounding and failure handling)
+npm run test:api             # end-to-end API tests (server running + migrated/seeded DB)
+npm run build                # production build (web + API)
+APP_URL=http://localhost:3001 npm run audit:ui   # 390×844, 430×932, 768×1024, 1440×900 screenshots + overflow checks
 ```
 
-### Destination 1: TODAY — The Investor's Briefing
-- **Main Editorial Focal Point:** A single prominent takeaway answering *"What deserves attention today and why?"* (e.g. *“3 companies require your attention today”*).
-- **Restrained Watchlist Strip:** Exactly 3 key metrics (Watchlist count, priority signal count, net market posture).
-- **Top 3 Priority Signals:** High-impact disclosures displayed with one-line takeaways and relevance tags.
-- **Event Memory Spotlight:** Surfaces an active historical commitment directly on the briefing screen with an audit trail deep-link.
+## Production
 
-### Destination 2: SIGNALS — Prioritized Alert Inbox
-- **Progressive Triage Structure:**
-  - **Needs Immediate Attention:** Results beats/misses, litigation demands, executive shifts.
-  - **Worth Watching:** Capex commissioning, credit rating revisions, promoter pledges.
-  - **Routine Compliance (Collapsible):** ESOP allocations, secretarial forms, and grievance reports safely stowed in an expandable drawer with zero visual clutter.
-- **Signal Detail Drawer (Slide-Over):** Progressive disclosure revealing Executive Takeaway $\rightarrow$ Financial Table / Bio $\rightarrow$ Linked Event Memory target $\rightarrow$ Official Exchange PDF link.
-- **Filter Sheet:** Filter by window (`24h`, `48h`, `7d`, `All`), severity, or any of the 17 announcement categories.
+The hosted deployment (Vercel frontend, Render API, Neon, Gemini), its environment variables and the update workflow are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
-### Destination 3: RESEARCH — Primary-Grounded Workspace
-- **Instant Search Autocomplete:** Real-time search across portfolio and external NSE equities.
-- **8-Domain Institutional Dossier:**
-  1. *Business Snapshot:* Operating model, revenue segments mix, and competitive moat.
-  2. *8-Tile Financial KPI Grid:* TTM Revenue, EBITDA margin, ROCE, ROE, D/E leverage, Working Capital Days, Free Cash Flow, and $CFO/PAT$ cash conversion.
-  3. *Narrative vs. Numbers:* Multi-quarter guidance audit comparing management promises against actual reported delivery.
-  4. *Active Guidance Ledger:* Metric, target period, and concall transcript source.
-  5. *Cash Quality Analysis:* Cash conversion commentary, working capital cycle, and FCF yield.
-  6. *Bull vs. Bear Debate:* Balanced institutional arguments grounded in balance sheet facts.
-  7. *Primary Evidence:* Clickable links to official Annual Reports and earnings call transcripts.
-- **Primary-Grounded Q&A Bar:** Answers investor queries (margin guidance, capex, working capital, risks) strictly citing primary transcripts.
+```bash
+npm run build
+NODE_ENV=production npm start    # API serves the built SPA from ./dist on the same origin
+```
 
-### Destination 4: EVENT MEMORY™ — Institutional Commitment Ledger
-- **Accountability Ledger:** Tracks historical promises (capex programs, margin corridors, store rollout targets, debt reductions).
-- **Status Classification:** `delivered`, `pending`, `delayed`, `revised`, `unverified`.
-- **Chronological Evidence Timeline:** Multi-step observation chain linking subsequent filings to the original promise without erasing earlier history.
+* Provide environment variables through your host's secret store, not files:
+  * `DATABASE_URL` (pooled)
+  * `DATABASE_URL_UNPOOLED` (for migrations)
+  * `JWT_SECRET` and `JWT_REFRESH_SECRET`
+  * `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL` (or `NEON_AI_GATEWAY_*`)
+  * `NEON_REALTIME_*`
+  * `CORS_ORIGINS`
+  * optional `LOGO_DEV_TOKEN` (higher-resolution company logos)
+* Reviewer demo login (both sides must agree):
+  * backend (runtime): `DEMO_MODE_ENABLED=true`, `DEMO_USER_EMAIL`, `DEMO_USER_PASSWORD`, optional `DEMO_USER_NAME`
+  * frontend (build time, compiled into the public bundle): `VITE_DEMO_LOGIN_ENABLED=true`, `VITE_DEMO_EMAIL`, `VITE_DEMO_PASSWORD`. When the backend serves the built app (`npm start`), set them where `npm run build` runs; on a separate static host (Vercel, Netlify), set them in that project's environment and also `VITE_API_BASE_URL`.
+  * Only ever put the dedicated demo account's credentials in `VITE_*` variables. To withdraw access, set `DEMO_MODE_ENABLED=false` (the account stops signing in immediately) and rebuild without the `VITE_DEMO_*` values.
+* Run `npm run db:migrate` on each release, before starting. With demo mode on, the API creates the reviewer account at start-up; `npm run demo:seed` does the same on its own.
+* Add the production origin to `preview.realtime.allowedOrigins` in `neon.ts`, then `neon deploy`.
+* Serve over HTTPS. Refresh cookies are `Secure` when `NODE_ENV=production`.
+* Run a single API instance, or set `ENABLE_SCHEDULER=false` on all but one so jobs are not duplicated. The login rate limiter is per-process; use a shared store (for example Upstash Redis) when scaling out.
 
----
+## Security
 
-## 6. REST API Specification
+* Secrets are read only on the server (`backend/src/config/env.ts`, validated at startup and never logged). The frontend `.env.example` holds only public values: an optional `VITE_API_BASE_URL` and the reviewer demo login (`VITE_DEMO_*`), which must only ever name the dedicated demo account. The logo provider token, if any, stays on the server; logos are proxied.
+* `.env`, `.env.*` and `.neon` are git-ignored.
+* Passwords use Argon2id. Access tokens live in memory; refresh tokens are `httpOnly` / `SameSite=Strict` cookies, rotated with reuse detection.
+* Every data query is scoped to the authenticated user. Helmet sets a CSP.
 
-The Node.js Express server (`server/server.mjs`) provides standard RESTful endpoints:
+## Data providers
 
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `/api/health` | `GET` | System health, database connection ping, AI status, EOD baseline date |
-| `/api/portfolio` | `GET` | Portfolio universe with prices, volume ratios, and watchlist flags |
-| `/api/portfolio/:ticker/watchlist` | `POST` | Toggles watchlist status for a company |
-| `/api/companies/search` | `GET` | Search companies by ticker, name, or sector |
-| `/api/watchlist` | `GET` | List of companies currently in the watchlist |
-| `/api/watchlist` | `POST` | Add company to watchlist |
-| `/api/watchlist/:ticker` | `DELETE` | Remove company from watchlist |
-| `/api/signals` | `GET` | Filtered exchange announcements (`?window=`, `?category=`, `?severity=`) |
-| `/api/alerts` | `GET` | Alias for signals endpoint |
-| `/api/alerts/evaluate` | `POST` | Evaluates price/volume breaches against customizable thresholds |
-| `/api/settings/alerts` | `GET` | Retrieve user alert sensitivity preferences |
-| `/api/settings/alerts` | `PUT` | Update user alert sensitivity preferences |
-| `/api/events/:ticker` | `GET` | Event commitment record for a company |
-| `/api/events/:ticker/history` | `GET` | Full chronological observation history chain for a company |
-| `/api/events/observations` | `POST` | Record a subsequent observation and update commitment status |
-| `/api/research/:ticker` | `GET` | 8-Domain institutional research dossier |
-| `/api/research/query` | `POST` | Primary-grounded Q&A extraction with exact document citations |
-| `/api/market/quote/:ticker` | `GET` | Real-time quote fetcher with automatic fallback to EOD baseline |
-| `/api/ai/status` | `GET` | AI engine integration status |
+`backend/src/providers/` defines adapters for company info, market data, history, announcements, financial statements and transcripts. `yfinance` (default for company info, market data and financials) is in `providers/adapters/yfinance.ts` and `backend/python/yf_provider.py`. It caches profile and history for 6 hours and statements for 7 days (`data_syncs`), runs at most two Python calls at a time, and surfaces Yahoo rate limits as HTTP 429 instead of retrying aggressively. If the Python environment is missing, the registry falls back to `demo`.
 
----
+Search on Research accepts a company name, NSE symbol (`ITC`), BSE code already in FINN, or Yahoo ticker (`ITC.NS`, `500875.BO`). Companies Yahoo resolves are imported, stored and refreshed by the market job.
 
-## 7. Submission Deliverables & Verification Checklist
+Renamed or demerged listings need an explicit symbol: Zomato maps to `ETERNAL.NS` (same entity, renamed). Tata Motors demerged into `TMPV.NS` (passenger vehicles) and `TMCV.NS` (commercial vehicles); FINN does not pick one for you, so `TATAMOTORS` stays on demo data until its `yahoo_symbol` is set.
 
-- [x] **Working Prototype:** Fully functional React Native mobile app (`http://localhost:8081/`) and unified API server (`http://localhost:3001/`).
-- [x] **Database Integration:** Neon PostgreSQL pool, SSL, query timeouts, and automated 9-table DDL migrations with resilient in-memory fallback.
-- [x] **AI Engine:** Google Gemini 2.0 integration with structured primary document Q&A and zero hallucination.
-- [x] **Code Quality:** Strict TypeScript (`tsc` passed with 0 errors across both web and mobile), clean modular architecture.
-- [x] **Automated Test Suite:** 60/60 passing assertions covering all 18 API routes, anomaly math, and Event Memory observation chain (`npm test`).
-- [x] **Mobile Optimization:** Flawless 390px execution with 0 horizontal layout overflows.
-- [x] **Primary Grounding:** Strict citations of Annual Reports, concalls, and Regulation 30/33 filings.
-- [x] **Signature Feature:** Event Memory™ ledger matching historical commitments to audited outcomes.
-- [x] **Environment Configuration:** `.env.example` template provided.
-- [x] **Submission Ready:** Target email `assessment@enam.com`, subject `ENAM - IIT screening - 2027`.
+To add a licensed provider:
+
+1. Review its documentation: endpoints, rate limits, NSE/BSE coverage, history depth, pricing and licensing.
+2. Implement the interfaces in `providers/adapters/<vendor>.ts` against its real responses.
+3. Register it in `providers/registry.ts`.
+4. Set `<CAPABILITY>_PROVIDER` and its key in `backend/.env`.
+
+## Company logos
+
+Every company row, card and header uses one component, `src/components/company/CompanyLogo.tsx`, which loads `GET /api/logos/:symbol` (for example `RELIANCE.NS`). The API resolves the logo once and caches it in `company_logos`:
+
+1. a verified `logo_url` stored on the company, when set;
+2. a logo provider for the company's verified website domain (`logo.dev` when `LOGO_DEV_TOKEN` is set, otherwise Google's favicon service);
+3. icons the official website declares (apple-touch-icon, sized icons, web manifest), then `/favicon.ico`.
+
+The domain is the hostname of the website Yahoo Finance reports for that exact listing (`companies.website_domain`), including for search results FINN has not imported yet; it is never derived from the company name. Every candidate is downloaded and checked (image signature, size of at least 16 px, roughly square). When nothing verifies, the UI shows the company's initials. To pin a logo by hand, set `companies.logo_url` to a URL on the company's own site and delete its `company_logos` row.
+
+Coverage without a token: favicons are often small (Reliance and ITC publish only 16 px icons, drawn small rather than blurred), and some sites declare no icon at all (Trent, which shows initials).
+
+## Documentation
+
+* [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): system design, alert engine, Event Memory, AI layer, jobs
+* [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md): REST API
+* [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md): schema and constraints
+* [docs/TESTING_REPORT.md](docs/TESTING_REPORT.md): what was verified, and how
+* `mobile/`: an earlier React Native (Expo) client, not updated in this iteration

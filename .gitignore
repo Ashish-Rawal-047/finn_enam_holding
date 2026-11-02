@@ -1,5 +1,32 @@
-finn-enam/node_modules/
-finn-enam/dist/
-.chrome-temp/
-*.log
+# Secrets and local configuration (the *.example files hold placeholders only)
+.env
+.env.*
+!.env.example
+.neon
+*.pem
+*.key
 
+# Dependencies and builds
+node_modules/
+dist/
+.expo/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local tooling, caches, logs and temporary files
+.claude/
+skills-lock.json
+.chrome-temp*/
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Database dumps and backups
+*.dump
+*.sql.gz
+*.backup
+backups/

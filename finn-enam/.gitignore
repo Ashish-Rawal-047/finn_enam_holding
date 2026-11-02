@@ -8,3 +8,4 @@ dist-ssr
 .chrome-temp*
 .DS_Store
 
+.neon

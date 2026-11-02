@@ -13,6 +13,9 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    // Same-origin API in development so the refresh cookie stays SameSite=Strict.
+    proxy: {
+      '/api': { target: 'http://localhost:3001', changeOrigin: false },
+    },
   },
 });
-

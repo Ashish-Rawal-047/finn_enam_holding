@@ -1,0 +1,56 @@
+# Render Blueprint for the FINN API (https://render.com/docs/blueprint-spec).
+# Secrets are `sync: false`: Render asks for them in the dashboard; they never live in Git.
+services:
+  - type: web
+    name: finn-api
+    runtime: docker
+    plan: free
+    region: singapore # same region as the Neon database (aws-ap-southeast-1)
+    rootDir: finn-enam/backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    branch: main
+    envVars:
+      # --- runtime
+      - key: NODE_ENV
+        value: production
+      - key: SERVE_FRONTEND
+        value: "false"
+      - key: ENABLE_SCHEDULER
+        value: "true"
+      # Browsers reach the API through the Vercel rewrite (same origin); this restricts direct calls.
+      - key: CORS_ORIGINS
+        value: https://finn-enam-holding.vercel.app
+      # --- secrets (entered in the Render dashboard)
+      - key: DATABASE_URL # Neon pooled connection string (-pooler host, sslmode=require)
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: AI_API_KEY # Google Gemini API key
+        sync: false
+      - key: NEON_REALTIME_URL # optional: live notifications (polling is the fallback)
+        sync: false
+      - key: NEON_REALTIME_SECRET
+        sync: false
+      # --- AI (Google Gemini)
+      - key: AI_PROVIDER
+        value: google
+      - key: AI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: AI_REASONING_MODEL
+        value: gemini-3.5-flash
+      - key: AI_EMBEDDING_MODEL
+        value: gemini-embedding-001
+      # --- reviewer demo account (public credentials, demo data only)
+      - key: DEMO_MODE_ENABLED
+        value: "true"
+      - key: DEMO_USER_EMAIL
+        value: reviewer@finn.demo
+      - key: DEMO_USER_PASSWORD
+        sync: false
+      - key: DEMO_USER_NAME
+        value: Reviewer

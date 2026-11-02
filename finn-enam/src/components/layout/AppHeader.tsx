@@ -1,93 +1,58 @@
 import React from 'react';
-import { AppTheme, NavigationTab } from '../../types';
-import { Star, Sliders, Sun, Moon, Info } from 'lucide-react';
+import { Bell, Moon, Sun } from 'lucide-react';
 import { FinnLogo } from '../common/FinnLogo';
+import { TABS, type TabId } from './navigation';
 
 interface AppHeaderProps {
-  activeTab: NavigationTab;
-  theme: AppTheme;
+  activeTab: TabId;
+  theme: 'light' | 'dark';
   onToggleTheme: () => void;
-  watchlistCount: number;
-  onOpenWatchlist: () => void;
-  onOpenSettings: () => void;
-  onOpenProvenance: () => void;
+  unreadCount: number;
+  onOpenNotifications: () => void;
+  liveMode: 'realtime' | 'polling' | 'connecting';
 }
 
-export const AppHeader: React.FC<AppHeaderProps> = ({
-  theme,
-  onToggleTheme,
-  watchlistCount,
-  onOpenWatchlist,
-  onOpenSettings,
-  onOpenProvenance,
-}) => {
+const iconBtn =
+  'relative flex h-10 w-10 items-center justify-center rounded-full text-ink-muted transition-colors duration-200 hover:bg-paper hover:text-forest-dark dark:hover:bg-ink-surface dark:hover:text-white';
+
+/** Compact app bar at the top of the frame: brand, current tab, live status, notifications and theme. */
+export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, theme, onToggleTheme, unreadCount, onOpenNotifications, liveMode }) => {
+  const title = TABS.find((t) => t.id === activeTab)?.label ?? '';
   return (
-    <header className="sticky top-0 z-30 w-full border-b border-divider bg-cream/95 dark:bg-ink-bg/95 backdrop-blur-md px-4 sm:px-6 py-3 transition-colors">
-      <div className="mx-auto flex max-w-4xl items-center justify-between">
-        {/* Brand & Wordmark */}
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center">
-            <FinnLogo
-              size={28}
-              primaryColor={theme === 'dark' ? '#4ADE80' : '#164E3B'}
-              secondaryColor={theme === 'dark' ? '#34D399' : '#187653'}
-            />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm font-bold tracking-tight text-ink dark:text-white">
-                FINN
-              </span>
-              <span className="text-[10px] font-mono tracking-wider uppercase text-ink-muted dark:text-ink-subtle">
-                ENAM INTEL
-              </span>
-            </div>
-            <p className="text-[10px] text-ink-muted dark:text-ink-subtle hidden xs:block">
-              Institutional Investment Agent
-            </p>
+    <header className="relative z-30 flex-none border-b border-divider/70 bg-cream/95 backdrop-blur-xl safe-pt dark:border-ink-border dark:bg-ink-bg/95">
+      <div className="flex h-14 items-center justify-between gap-2 pl-4 pr-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <FinnLogo size={22} primaryColor={theme === 'dark' ? '#6DBE96' : '#236B52'} secondaryColor={theme === 'dark' ? '#8ACFAC' : '#397E65'} />
+          <div className="flex min-w-0 items-baseline gap-1.5">
+            <span className="font-serif text-[20px] leading-none text-forest-dark dark:text-white">Finn</span>
+            <span className="truncate text-[12px] text-ink-muted">· {title}</span>
           </div>
         </div>
 
-        {/* Data Freshness Indicator & Controls */}
-        <div className="flex items-center gap-2 sm:gap-2.5">
-          {/* EOD Data Pill */}
-          <button
-            onClick={onOpenProvenance}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white hover:bg-cream-light dark:bg-ink-surface border border-divider text-[11px] text-ink dark:text-ink-light transition-colors shadow-subtle"
-            title="Data verification & market baseline"
+        <div className="flex items-center">
+          <span
+            className="mr-1 inline-flex items-center gap-1.5 px-1.5 text-[10.5px] font-medium text-ink-muted"
+            title={liveMode === 'realtime' ? 'Notifications stream live via Neon Realtime' : 'Notifications refresh every 30 seconds'}
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald" />
-            <span className="font-mono text-[10px] font-medium hidden sm:inline">EOD OCT 28</span>
-            <span className="font-mono text-[10px] font-medium sm:hidden">EOD</span>
-            <Info size={11} className="text-ink-muted" />
+            <span className="relative flex h-1.5 w-1.5">
+              {liveMode === 'realtime' && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fin-up opacity-60" />}
+              <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${liveMode === 'realtime' ? 'bg-fin-up' : 'bg-ink-subtle'}`} />
+            </span>
+            {liveMode === 'realtime' ? 'Live' : liveMode === 'connecting' ? '…' : 'Synced'}
+          </span>
+          <button onClick={onOpenNotifications} className={iconBtn} aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}>
+            <Bell size={18} strokeWidth={1.75} />
+            {unreadCount > 0 && (
+              <span
+                key={unreadCount}
+                className="badge-pop absolute right-1 top-1 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-fin-red px-1 font-mono text-[9px] font-semibold text-white ring-2 ring-cream dark:ring-ink-bg"
+              >
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
           </button>
-
-          {/* Watchlist Quick Button */}
-          <button
-            onClick={onOpenWatchlist}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white hover:bg-cream-light dark:bg-ink-surface border border-divider text-[11px] text-ink dark:text-ink-light transition-colors shadow-subtle"
-            title="Open Watchlist Universe"
-          >
-            <Star size={12} className="text-fin-amber fill-fin-amber" />
-            <span className="font-mono text-[11px] font-semibold">{watchlistCount}</span>
-          </button>
-
-          {/* Alert Threshold Settings Button */}
-          <button
-            onClick={onOpenSettings}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white hover:bg-cream-light dark:bg-ink-surface border border-divider text-ink-muted hover:text-forest dark:hover:text-emerald transition-colors shadow-subtle"
-            title="Alert Anomaly Sensitivity Settings"
-          >
-            <Sliders size={14} />
-          </button>
-
-          {/* Theme Toggle */}
-          <button
-            onClick={onToggleTheme}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white hover:bg-cream-light dark:bg-ink-surface border border-divider text-ink-muted hover:text-forest dark:hover:text-emerald transition-colors shadow-subtle"
-            title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
-          >
-            {theme === 'light' ? <Moon size={14} /> : <Sun size={14} className="text-fin-amber" />}
+          <button onClick={onToggleTheme} className={iconBtn} aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
+            {theme === 'light' ? <Moon size={17} strokeWidth={1.75} /> : <Sun size={17} strokeWidth={1.75} />}
           </button>
         </div>
       </div>

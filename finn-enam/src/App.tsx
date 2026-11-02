@@ -1,360 +1,235 @@
-import { useState, useMemo, useEffect } from 'react';
-import { NavigationTab, AppTheme, Company, AlertSettings, TriggeredAlert, Announcement } from './types';
-import { AppHeader } from './components/layout/AppHeader';
-import { BottomNav } from './components/layout/BottomNav';
-import { TodayScreen } from './screens/TodayScreen';
+import { useCallback, useEffect, useState } from 'react';
+import { MotionConfig } from 'framer-motion';
+import { useAuth } from './auth/AuthContext';
+import { AuthScreen } from './screens/AuthScreen';
+import { HomeScreen } from './screens/HomeScreen';
 import { SignalsScreen } from './screens/SignalsScreen';
 import { ResearchScreen } from './screens/ResearchScreen';
 import { EventMemoryScreen } from './screens/EventMemoryScreen';
-import { WatchlistDrawer } from './components/settings/WatchlistDrawer';
-import { SignalDetailDrawer } from './components/signals/SignalDetailDrawer';
-import { Drawer } from './components/common/Drawer';
-import { MOCK_COMPANIES, DEMO_DATA_DISCLAIMER } from './data/companies';
-import { MOCK_ANNOUNCEMENTS, MOCK_TRIGGERED_ALERTS } from './data/announcements';
-import { MOCK_EVENT_MEMORY } from './data/eventMemory';
-import { DEFAULT_ALERT_SETTINGS } from './data/alertSettings';
-import { FinnApi } from './services/api';
-import { Sparkles, Bell, Search, History, ShieldCheck } from 'lucide-react';
+import { SettingsScreen } from './screens/SettingsScreen';
+import { AppHeader } from './components/layout/AppHeader';
+import { BottomNav } from './components/layout/BottomNav';
+import { AppFrame, AppShell, scrollAppToTop } from './components/layout/AppShell';
+import type { TabId } from './components/layout/navigation';
+import { CompanySheet } from './components/company/CompanySheet';
+import { SignalDetail } from './components/signals/SignalDetail';
+import { EventDetailSheet } from './components/memory/EventDetailSheet';
+import { CreateEventSheet } from './components/memory/CreateEventSheet';
+import { NotificationCenter } from './components/notifications/NotificationCenter';
+import { FinnLogo } from './components/common/FinnLogo';
+import { LiveNotifications, useUnreadCount, type LiveMode } from './lib/live';
+import { usePortfolio } from './lib/queries';
+import { Spinner } from './components/ui';
+
+type Theme = 'light' | 'dark';
+
+function readTheme(): Theme {
+  try {
+    const saved = localStorage.getItem('finn-theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {
+    /* storage unavailable */
+  }
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<NavigationTab>('today');
-  const [theme, setTheme] = useState<AppTheme>('light');
-  const [selectedResearchTicker, setSelectedResearchTicker] = useState<string>('TRENT.NS');
-  const [activeMemoryId, setActiveMemoryId] = useState<string | null>(null);
-  const [selectedSignalDetail, setSelectedSignalDetail] = useState<Announcement | TriggeredAlert | null>(null);
+  const { status, user } = useAuth();
+  const [theme, setTheme] = useState<Theme>(readTheme);
 
-  const [companies, setCompanies] = useState<Company[]>(MOCK_COMPANIES);
-  const [alertSettings, setAlertSettings] = useState<AlertSettings>(DEFAULT_ALERT_SETTINGS);
-
-  const [isWatchlistDrawerOpen, setIsWatchlistDrawerOpen] = useState<boolean>(false);
-  const [watchlistDrawerTab, setWatchlistDrawerTab] = useState<'watchlist' | 'thresholds'>('watchlist');
-  const [isProvenanceOpen, setIsProvenanceOpen] = useState<boolean>(false);
-
-  // Apply theme class to document
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0E1B16' : '#F7F5ED');
+    try {
+      localStorage.setItem('finn-theme', theme);
+    } catch {
+      /* ignore */
     }
   }, [theme]);
 
-  // Load live database-backed portfolio and settings on mount
+  // Adopt the theme saved on the profile once after sign-in.
   useEffect(() => {
-    let isMounted = true;
-    async function loadBackendData() {
-      try {
-        const [backendCompanies, backendPrefs] = await Promise.all([
-          FinnApi.getPortfolio(),
-          FinnApi.getAlertPreferences()
-        ]);
-        if (isMounted) {
-          if (backendCompanies && backendCompanies.length > 0) {
-            setCompanies(backendCompanies);
-          }
-          if (backendPrefs) {
-            setAlertSettings((prev) => ({
-              ...prev,
-              priceMoveThresholdPercent: backendPrefs.priceChangeThreshold ?? prev.priceMoveThresholdPercent,
-              volumeSpikeMultiplier: backendPrefs.volumeThreshold ?? prev.volumeSpikeMultiplier
-            }));
-          }
-        }
-      } catch (err) {
-        console.warn('Backend load notice:', err);
-      }
-    }
-    loadBackendData();
-    return () => {
-      isMounted = false;
-    };
+    if (user?.theme) setTheme(user.theme);
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (status === 'loading') {
+    return (
+      <AppFrame>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3" role="status">
+          <FinnLogo size={40} />
+          <Spinner className="text-forest dark:text-emerald" />
+        </div>
+      </AppFrame>
+    );
+  }
+  if (status === 'anonymous') {
+    return (
+      <AppFrame>
+        <AuthScreen />
+      </AppFrame>
+    );
+  }
+  return <Shell theme={theme} setTheme={setTheme} />;
+}
+
+// --- URL routing ---------------------------------------------------------------------
+// Paths: /  /signals  /research  /event-memory  /event-memory/:eventId?compare=:newEventId  /settings
+const TAB_PATH: Record<TabId, string> = { home: '/', signals: '/signals', research: '/research', memory: '/event-memory', settings: '/settings' };
+
+interface Route {
+  tab: TabId;
+  eventId: string | null;
+  compareWith: string | null;
+}
+
+function parseRoute(): Route {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  const params = new URLSearchParams(window.location.search);
+  const m = /^\/event-memory\/([0-9a-f-]{36})$/i.exec(path);
+  if (m) return { tab: 'memory', eventId: m[1], compareWith: params.get('compare') };
+  const tab = (Object.entries(TAB_PATH).find(([, p]) => p === path)?.[0] as TabId | undefined) ?? 'home';
+  return { tab, eventId: null, compareWith: null };
+}
+
+function routeUrl(r: Route) {
+  if (r.tab === 'memory' && r.eventId) return `/event-memory/${r.eventId}${r.compareWith ? `?compare=${r.compareWith}` : ''}`;
+  return TAB_PATH[r.tab];
+}
+
+function Shell({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void }) {
+  const initial = useState(parseRoute)[0];
+  const [tab, setTab] = useState<TabId>(initial.tab);
+  const [companyId, setCompanyId] = useState<string | null>(null);
+  const [signalId, setSignalId] = useState<string | null>(null);
+  const [eventId, setEventId] = useState<string | null>(initial.eventId);
+  const [compareWith, setCompareWith] = useState<string | null>(initial.compareWith);
+  const [memoryFocus, setMemoryFocus] = useState<string | null>(null);
+  const [researchCompanyId, setResearchCompanyId] = useState<string | null>(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [creatingEvent, setCreatingEvent] = useState(false);
+  const [liveMode, setLiveMode] = useState<LiveMode>('connecting');
+  const onMode = useCallback((m: LiveMode) => setLiveMode(m), []);
+  const unread = useUnreadCount(liveMode);
+  const portfolio = usePortfolio();
+  const companiesWithAlerts = (portfolio.data ?? []).filter((h) => h.activeSignalCount > 0).length;
+
+  const navigate = useCallback((r: Route, replace = false) => {
+    const url = routeUrl(r);
+    if (url !== window.location.pathname + window.location.search) window.history[replace ? 'replaceState' : 'pushState'](r, '', url);
   }, []);
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  };
+  // Browser back/forward.
+  useEffect(() => {
+    const onPop = () => {
+      const r = parseRoute();
+      setTab(r.tab);
+      setEventId(r.eventId);
+      setCompareWith(r.compareWith);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
-  // Toggle company watchlist status
-  const handleToggleWatchlist = async (ticker: string) => {
-    setCompanies((prev) =>
-      prev.map((c) =>
-        c.ticker === ticker ? { ...c, inWatchlist: !c.inWatchlist } : c
-      )
-    );
-    try {
-      await FinnApi.toggleWatchlist(ticker);
-    } catch {
-      // Handled gracefully
+  const go = (t: TabId) => {
+    setTab(t);
+    setEventId(null);
+    setCompareWith(null);
+    navigate({ tab: t, eventId: null, compareWith: null });
+    scrollAppToTop();
+  };
+  const openResearch = (id: string) => {
+    setResearchCompanyId(id);
+    setCompanyId(null);
+    setSignalId(null);
+    go('research');
+  };
+  const openCompany = (id: string) => {
+    setSignalId(null);
+    setEventId(null);
+    setCompanyId(id);
+  };
+  const openEvent = (id: string, compare: string | null = null) => {
+    setSignalId(null);
+    setCompanyId(null);
+    setNotificationsOpen(false);
+    setEventId(id);
+    setCompareWith(compare);
+    if (tab === 'memory' || compare) {
+      setTab('memory');
+      navigate({ tab: 'memory', eventId: id, compareWith: compare });
     }
   };
-
-  // Cross-Navigation Handlers
-  const handleSelectCompanyForResearch = (ticker: string) => {
-    setSelectedResearchTicker(ticker);
-    setActiveTab('research');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  /** From an alert: land on Event Memory with the exact historical event open, compared with the new one. */
+  const viewHistoricalEvent = (historicalEventId: string, newEventId: string, companySymbol?: string | null) => {
+    setMemoryFocus(companySymbol ?? null);
+    openEvent(historicalEventId, newEventId);
+    scrollAppToTop();
+  };
+  const closeEvent = () => {
+    setEventId(null);
+    setCompareWith(null);
+    if (tab === 'memory') navigate({ tab: 'memory', eventId: null, compareWith: null }, true);
   };
 
-  const handleNavigateToMemory = (memoryId?: string) => {
-    if (memoryId) setActiveMemoryId(memoryId);
-    setActiveTab('memory');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  // Dynamically compute triggered anomaly alerts based on user sensitivity sliders
-  const dynamicAlerts = useMemo<TriggeredAlert[]>(() => {
-    const list: TriggeredAlert[] = [];
-
-    companies.forEach((comp) => {
-      // 1. Price Threshold Check
-      if (Math.abs(comp.changePercent) >= alertSettings.priceMoveThresholdPercent) {
-        list.push({
-          id: `dyn-price-${comp.ticker}`,
-          ticker: comp.ticker,
-          companyName: comp.name,
-          type: 'price_move',
-          severity: Math.abs(comp.changePercent) >= alertSettings.priceMoveThresholdPercent * 1.5 ? 'critical' : 'high',
-          headline: `Price move of ${comp.changePercent > 0 ? '+' : ''}${comp.changePercent.toFixed(2)}% breached ±${alertSettings.priceMoveThresholdPercent}% threshold`,
-          triggerMetric: `${comp.changePercent > 0 ? '+' : ''}${comp.changePercent.toFixed(2)}%`,
-          explanation: `Daily price shift exceeds configured sensitivity of ±${alertSettings.priceMoveThresholdPercent}%. Traded volume ratio is ${comp.volumeRatio}x 20-DMA.`,
-          timestamp: 'EOD Verified',
-          isEod: true,
-        });
-      }
-
-      // 2. Volume Spike Check
-      if (comp.volumeRatio >= alertSettings.volumeSpikeMultiplier) {
-        list.push({
-          id: `dyn-vol-${comp.ticker}`,
-          ticker: comp.ticker,
-          companyName: comp.name,
-          type: 'volume_spike',
-          severity: comp.volumeRatio >= alertSettings.volumeSpikeMultiplier * 1.4 ? 'critical' : 'high',
-          headline: `Volume spike of ${comp.volumeRatio.toFixed(2)}x 20-DMA crossed ${alertSettings.volumeSpikeMultiplier}x trigger`,
-          triggerMetric: `${comp.volumeRatio.toFixed(2)}x Vol`,
-          explanation: `Exceptional institutional turnover significantly surpasses rolling 20-day moving average volume.`,
-          timestamp: 'EOD Verified',
-          isEod: true,
-        });
-      }
-    });
-
-    // Merge with curated material corporate announcements
-    MOCK_TRIGGERED_ALERTS.forEach((curated) => {
-      if (curated.type === 'material_filing' || curated.type === 'guidance_miss') {
-        if (!list.some((item) => item.ticker === curated.ticker && item.type === curated.type)) {
-          list.push(curated);
-        }
-      }
-    });
-
-    return list.slice(0, 6);
-  }, [companies, alertSettings.priceMoveThresholdPercent, alertSettings.volumeSpikeMultiplier]);
-
-  const watchlistCount = companies.filter((c) => c.inWatchlist).length;
-
-  const navItems = [
-    { id: 'today' as NavigationTab, label: 'Today', icon: Sparkles },
-    { id: 'signals' as NavigationTab, label: 'Signals', icon: Bell, badge: dynamicAlerts.length },
-    { id: 'research' as NavigationTab, label: 'Research', icon: Search },
-    { id: 'memory' as NavigationTab, label: 'Event Memory', icon: History },
-  ];
+  const badges = { signals: companiesWithAlerts };
 
   return (
-    <div className="min-h-screen w-full max-w-full bg-cream dark:bg-ink-bg text-ink dark:text-ink-text antialiased flex flex-col transition-colors">
-      {/* Editorial Header */}
-      <AppHeader
-        activeTab={activeTab}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        watchlistCount={watchlistCount}
-        onOpenWatchlist={() => {
-          setWatchlistDrawerTab('watchlist');
-          setIsWatchlistDrawerOpen(true);
-        }}
-        onOpenSettings={() => {
-          setWatchlistDrawerTab('thresholds');
-          setIsWatchlistDrawerOpen(true);
-        }}
-        onOpenProvenance={() => setIsProvenanceOpen(true)}
-      />
-
-      {/* Responsive Main Layout Container */}
-      <div className="mx-auto flex w-full max-w-4xl flex-1 px-4 sm:px-6">
-        {/* Desktop Sidebar Rail (Visible on >= 1024px) */}
-        <aside className="hidden lg:flex w-52 flex-col justify-between py-6 pr-6 border-r border-divider dark:border-ink-border">
-          <nav className="space-y-1">
-            <div className="text-[10px] uppercase font-mono tracking-wider text-ink-muted mb-2 px-2.5">
-              Destinations
-            </div>
-            {navItems.map((item) => {
-              const isActive = activeTab === item.id;
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`flex w-full items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-forest text-white shadow-sm font-semibold'
-                      : 'text-ink-muted hover:text-ink hover:bg-cream-dark dark:hover:bg-ink-surface'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon size={16} strokeWidth={isActive ? 2.2 : 1.8} />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge && item.badge > 0 ? (
-                    <span className={`h-4 min-w-[16px] px-1.5 rounded-full font-mono text-[9px] font-bold flex items-center justify-center ${
-                      isActive
-                        ? 'bg-white/20 text-white'
-                        : 'bg-sage text-forest'
-                    }`}>
-                      {item.badge}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Sidebar Footer Info */}
-          <div className="rounded-xl bg-white dark:bg-ink-surface border border-divider dark:border-ink-border p-3 space-y-1.5 text-[11px] text-ink-muted shadow-subtle">
-            <div className="font-semibold text-ink dark:text-white flex items-center gap-1.5">
-              <ShieldCheck size={14} className="text-forest dark:text-emerald" />
-              Primary Discipline
-            </div>
-            <p className="leading-snug">
-              No broker notes or secondary rumors. Grounded strictly in exchange filings.
-            </p>
-          </div>
-        </aside>
-
-        {/* Central Reading / Working Canvas */}
-        <main className="w-full flex-1 max-w-2xl mx-auto lg:pl-8">
-          {activeTab === 'today' && (
-            <TodayScreen
-              companies={companies}
-              triggeredAlerts={dynamicAlerts}
-              eventMemoryItems={MOCK_EVENT_MEMORY}
-              onSelectSignal={(alert) => setSelectedSignalDetail(alert)}
-              onNavigateToSignals={() => setActiveTab('signals')}
-              onNavigateToMemory={handleNavigateToMemory}
-            />
-          )}
-
-          {activeTab === 'signals' && (
-            <SignalsScreen
-              announcements={MOCK_ANNOUNCEMENTS}
-              triggeredAlerts={dynamicAlerts}
-              settings={alertSettings}
-              onOpenSettings={() => {
-                setWatchlistDrawerTab('thresholds');
-                setIsWatchlistDrawerOpen(true);
+    <MotionConfig reducedMotion="user">
+      <LiveNotifications onMode={onMode} />
+      <AppShell
+        screenKey={tab}
+        header={
+          <AppHeader
+            activeTab={tab}
+            theme={theme}
+            onToggleTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            unreadCount={unread}
+            onOpenNotifications={() => setNotificationsOpen(true)}
+            liveMode={liveMode}
+          />
+        }
+        navigation={<BottomNav activeTab={tab} onSelectTab={go} badges={badges} />}
+        overlays={
+          <>
+            <CompanySheet companyId={companyId} theme={theme} onClose={() => setCompanyId(null)} onInspectSignal={setSignalId} onOpenResearch={openResearch} />
+            <EventDetailSheet eventId={eventId} compareWithId={compareWith} onClose={closeEvent} onOpenEvent={(id) => openEvent(id)} onOpenCompany={openCompany} />
+            <CreateEventSheet
+              open={creatingEvent}
+              onClose={() => setCreatingEvent(false)}
+              onCreated={(id) => {
+                setCreatingEvent(false);
+                setTab('memory');
+                openEvent(id);
+                navigate({ tab: 'memory', eventId: id, compareWith: null });
               }}
-              onSelectSignal={(sig) => setSelectedSignalDetail(sig)}
             />
-          )}
-
-          {activeTab === 'research' && (
-            <ResearchScreen
-              companies={companies}
-              selectedTicker={selectedResearchTicker}
-              onSelectTicker={(ticker) => setSelectedResearchTicker(ticker)}
-              onToggleWatchlist={handleToggleWatchlist}
-              onNavigateToMemory={handleNavigateToMemory}
+            <NotificationCenter
+              open={notificationsOpen}
+              onClose={() => setNotificationsOpen(false)}
+              onInspectSignal={setSignalId}
+              onViewHistoricalEvent={(h, n, sym) => viewHistoricalEvent(h, n, sym)}
             />
-          )}
-
-          {activeTab === 'memory' && (
-            <EventMemoryScreen
-              memoryItems={MOCK_EVENT_MEMORY}
-              initialActiveId={activeMemoryId}
-              onNavigateToResearch={handleSelectCompanyForResearch}
-            />
-          )}
-        </main>
-      </div>
-
-      {/* Persistent Mobile Bottom Navigation Bar (< 1024px) */}
-      <div className="lg:hidden">
-        <BottomNav
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
-          unreadSignalsCount={dynamicAlerts.length}
-        />
-      </div>
-
-      {/* Slide-over Drawers */}
-      <WatchlistDrawer
-        isOpen={isWatchlistDrawerOpen}
-        onClose={() => setIsWatchlistDrawerOpen(false)}
-        initialTab={watchlistDrawerTab}
-        companies={companies}
-        onToggleWatchlist={handleToggleWatchlist}
-        onSelectCompanyForResearch={(ticker) => {
-          handleSelectCompanyForResearch(ticker);
-          setIsWatchlistDrawerOpen(false);
-        }}
-        settings={alertSettings}
-        onChangeSettings={setAlertSettings}
-        activeAlerts={dynamicAlerts}
-      />
-
-      <SignalDetailDrawer
-        isOpen={!!selectedSignalDetail}
-        onClose={() => setSelectedSignalDetail(null)}
-        signal={selectedSignalDetail}
-        onInvestigateCompany={(ticker) => {
-          handleSelectCompanyForResearch(ticker);
-          setSelectedSignalDetail(null);
-        }}
-        onInspectMemory={(memId) => {
-          handleNavigateToMemory(memId);
-          setSelectedSignalDetail(null);
-        }}
-      />
-
-      {/* Provenance Verification Drawer */}
-      <Drawer
-        isOpen={isProvenanceOpen}
-        onClose={() => setIsProvenanceOpen(false)}
-        title="Market Baseline & Data Provenance"
-        subtitle="Verification & Architecture"
-        maxWidth="md"
+            <SignalDetail signalId={signalId} onClose={() => setSignalId(null)} onOpenCompany={openCompany} onOpenEvent={(id) => openEvent(id)} />
+          </>
+        }
       >
-        <div className="space-y-4 text-xs text-ink dark:text-ink-light">
-          <div className="rounded-xl bg-sage/50 p-3.5 border border-divider">
-            <div className="flex items-center gap-2 text-forest font-bold text-xs">
-              <ShieldCheck size={16} />
-              <span>Grounding Standard</span>
-            </div>
-            <p className="mt-1 text-[11px] leading-relaxed text-ink-muted">
-              Every takeaway, financial table, and Event Memory commitment audit in FINN is linked to primary official filings published on BSE and NSE archives.
-            </p>
-          </div>
-
-          <div className="space-y-2 text-[11px]">
-            <div className="flex justify-between py-1.5 border-b border-divider">
-              <span className="text-ink-muted">End-of-Day Baseline</span>
-              <span className="font-mono font-bold text-forest">October 28, 2026 (Closing Bhavcopy)</span>
-            </div>
-            <div className="flex justify-between py-1.5 border-b border-divider">
-              <span className="text-ink-muted">Monitored Portfolio</span>
-              <span className="font-mono font-bold">18 NSE/BSE Equities</span>
-            </div>
-            <div className="flex justify-between py-1.5 border-b border-divider">
-              <span className="text-ink-muted">Event Memory Ledger</span>
-              <span className="font-mono font-bold text-forest">6 Active Corporate Pledges</span>
-            </div>
-          </div>
-
-          <div className="p-3 bg-cream-dark rounded-lg text-[10px] text-ink-muted leading-normal">
-            {DEMO_DATA_DISCLAIMER}
-          </div>
-        </div>
-      </Drawer>
-    </div>
+        {tab === 'home' && (
+          <HomeScreen
+            onInspectSignal={setSignalId}
+            onOpenNotifications={() => setNotificationsOpen(true)}
+            onGoToSettings={() => go('settings')}
+            onOpenCompany={openCompany}
+            onOpenEvent={(id) => openEvent(id)}
+            onGoToMemory={() => go('memory')}
+            onViewHistoricalEvent={viewHistoricalEvent}
+          />
+        )}
+        {tab === 'signals' && <SignalsScreen onOpenCompany={openCompany} onInspectSignal={setSignalId} onGoToSettings={() => go('settings')} />}
+        {tab === 'research' && <ResearchScreen companyId={researchCompanyId} onSelectCompany={setResearchCompanyId} onOpenCompany={openCompany} />}
+        {tab === 'memory' && <EventMemoryScreen onOpenEvent={(id) => openEvent(id)} onCreateEvent={() => setCreatingEvent(true)} focusQuery={memoryFocus} />}
+        {tab === 'settings' && <SettingsScreen theme={theme} onSetTheme={setTheme} onOpenCompany={openCompany} />}
+      </AppShell>
+    </MotionConfig>
   );
 }
 

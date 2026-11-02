@@ -1,581 +1,869 @@
-import React, { useState, useMemo } from 'react';
-import { Company, CompanyResearch } from '../types';
-import { getCompanyResearch } from '../data/research';
-import { FinnApi } from '../services/api';
-import { Search, Star, ExternalLink, FileText, Sparkles, ShieldCheck, CornerDownLeft, TrendingUp, TrendingDown } from 'lucide-react';
-import { Badge } from '../components/common/Badge';
+import React, { useEffect, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { AlertCircle, Check, ChevronDown, ChevronRight, CloudDownload, ExternalLink, FileText, Globe, Minus, RefreshCw, Search, Sparkles, X } from 'lucide-react';
+import { useCompanySearch, useEvidence, useHealth, useImportCompany, usePortfolio, useRefreshCompany, useResearch, useResearchJob, useStartResearch } from '../lib/queries';
+import { dateTime, humanize, inr, relativeTime, shortDate } from '../lib/format';
+import type { Claim, Freshness, Quote, ResearchJob, ResearchReport, ResearchResponse, ResearchSection, SectionKey, SectionProgress } from '../lib/types';
+import { useToast } from '../components/common/Toast';
+import { FinancialChart, type FinancialPoint } from '../components/charts/FinancialChart';
+import { EASE_OUT } from '../components/motion';
+import { Change, ClaimTag, DemoPill, EmptyState, ErrorState, Eyebrow, LoadingBlock, Panel, PrimaryButton, ScreenTitle, SecondaryButton, Skeleton, Spinner, Ticker, cx, inputCls } from '../components/ui';
+import { CompanyLogo } from '../components/company/CompanyLogo';
 
-interface ResearchScreenProps {
-  companies: Company[];
-  selectedTicker: string;
-  onSelectTicker: (ticker: string) => void;
-  onToggleWatchlist: (ticker: string) => void;
-  onNavigateToMemory?: (memoryId: string) => void;
+const SECTIONS: Array<{ key: SectionKey; letter: string; title: string; short: string }> = [
+  { key: 'summary', letter: '★', title: 'Overall research summary', short: 'Summary' },
+  { key: 'businessSnapshot', letter: 'A', title: 'Business snapshot', short: 'Business' },
+  { key: 'financialSnapshot', letter: 'B', title: 'Financial snapshot', short: 'Financials' },
+  { key: 'businessTrajectory', letter: 'C', title: 'Business trajectory', short: 'Trajectory' },
+  { key: 'balanceSheet', letter: 'D', title: 'Balance sheet analysis', short: 'Balance sheet' },
+  { key: 'cashQuality', letter: 'E', title: 'Quality of cash', short: 'Cash' },
+  { key: 'narrativeVsNumbers', letter: 'F', title: 'Narrative vs numbers', short: 'Narrative' },
+  { key: 'forwardGuidance', letter: 'G', title: 'Forward guidance', short: 'Guidance' },
+  { key: 'bullBear', letter: 'H', title: 'Bull vs bear', short: 'Bull vs bear' },
+  { key: 'investmentRisks', letter: 'I', title: 'Investment risk assessment', short: 'Risks' },
+];
+
+const TIMING_LABEL: Record<string, string> = {
+  end_of_day: 'End-of-day close',
+  delayed: 'Delayed quote',
+  realtime: 'Real-time quote',
+  synthetic: 'Synthetic demo price',
+  unknown: 'Quote timing unknown',
+};
+
+interface Props {
+  companyId: string | null;
+  onSelectCompany: (id: string | null) => void;
+  onOpenCompany: (id: string) => void;
 }
 
-type ResearchTab = 'overview' | 'financials' | 'track_record' | 'thesis' | 'sources';
+export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, onOpenCompany }) => {
+  const [term, setTerm] = useState('');
+  const [debounced, setDebounced] = useState('');
+  const [reportId, setReportId] = useState<string | undefined>();
+  const [jobId, setJobId] = useState<string | null>(null);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(term), 300);
+    return () => clearTimeout(t);
+  }, [term]);
+  useEffect(() => {
+    setReportId(undefined);
+    setJobId(null);
+  }, [companyId]);
 
-interface GroundedResponse {
-  finding: string;
-  citation: string;
-}
+  const search = useCompanySearch(debounced);
+  const importCompany = useImportCompany();
+  const research = useResearch(companyId, reportId);
+  const start = useStartResearch(companyId);
+  const job = useResearchJob(jobId, companyId);
+  const refresh = useRefreshCompany(companyId);
+  const health = useHealth();
+  const toast = useToast();
+  const report = research.data?.report ?? null;
 
-export const ResearchScreen: React.FC<ResearchScreenProps> = ({
-  companies,
-  selectedTicker,
-  onSelectTicker,
-  onToggleWatchlist,
-}) => {
-  const [searchInput, setSearchInput] = useState<string>('');
-  const [isSearchFocused, setIsSearchFocused] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<ResearchTab>('overview');
-  const [userQuery, setUserQuery] = useState<string>('');
-  const [queryResponse, setQueryResponse] = useState<GroundedResponse | null>(null);
-  const [isQuerying, setIsQuerying] = useState<boolean>(false);
+  // A job started before a reload (or in another tab) is picked up and shown in progress.
+  const activeJobId = research.data?.activeJob?.id;
+  useEffect(() => {
+    if (activeJobId && !jobId) setJobId(activeJobId);
+  }, [activeJobId, jobId]);
 
-  const activeCompany = companies.find((c) => c.ticker === selectedTicker) || companies[0];
-  const research: CompanyResearch = getCompanyResearch(
-    selectedTicker,
-    activeCompany?.name,
-    activeCompany?.sector
-  );
+  const current = job.data;
+  const running = start.isPending || Boolean(current && (current.status === 'queued' || current.status === 'running'));
+  const finished = current?.status === 'succeeded' ? current.id : null;
+  useEffect(() => {
+    if (!finished || !current) return;
+    setReportId(current.reportId ?? undefined);
+    setJobId(null);
+    toast(current.reused ? 'Research is up to date — nothing changed since the last report' : 'Research report ready');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finished]);
 
-  const isWatched = activeCompany?.inWatchlist ?? false;
+  const pickExternal = (symbol: string) =>
+    importCompany.mutate(symbol, {
+      onSuccess: (r) => {
+        setTerm('');
+        onSelectCompany(r.company.id);
+      },
+    });
 
-  // Autocomplete suggestions based on user input
-  const searchSuggestions = useMemo(() => {
-    if (!searchInput.trim() || searchInput.trim().length < 1) return [];
-    const q = searchInput.trim().toLowerCase();
-    return companies
-      .filter(
-        (c) =>
-          c.ticker.toLowerCase().includes(q) ||
-          c.name.toLowerCase().includes(q) ||
-          c.sector.toLowerCase().includes(q)
-      )
-      .slice(0, 5);
-  }, [searchInput, companies]);
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchSuggestions.length > 0) {
-      onSelectTicker(searchSuggestions[0].ticker);
-      setSearchInput('');
-      setIsSearchFocused(false);
-    }
-  };
-
-  const handleAskAI = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userQuery.trim() || isQuerying) return;
-
-    setIsQuerying(true);
-    setQueryResponse(null);
-
-    try {
-      const result = await FinnApi.queryResearch(selectedTicker, userQuery);
-      if (result) {
-        setQueryResponse({
-          finding: result.finding,
-          citation: result.citation,
-        });
-      }
-    } catch {
-      setQueryResponse({
-        finding: `Audited findings for ${activeCompany.name}: Operating performance adheres to primary regulatory filings. No governance deviations identified in FY24 disclosures.`,
-        citation: `${activeCompany.name} Annual Report FY24 (MD&A Section) & BSE Regulation 30 Filings`,
-      });
-    } finally {
-      setIsQuerying(false);
-    }
-  };
-
-  const formatTicker = (ticker: string) => {
-    const parts = ticker.split('.');
-    return (
-      <span className="font-mono text-base font-bold text-ink dark:text-white">
-        {parts[0]}
-        {parts[1] && <span className="text-xs font-normal text-ink-muted">.{parts[1]}</span>}
-      </span>
-    );
-  };
+  const run = (mode: 'generate' | 'refresh') => start.mutate({ mode }, { onSuccess: (r) => setJobId(r.job.id) });
 
   return (
-    <div className="space-y-5 pb-24 pt-2">
-      {/* 1. Ticker Search & Instant Autocomplete Dropdown */}
-      <div className="relative">
-        <form onSubmit={handleSearchSubmit} className="relative">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
-          <input
-            type="text"
-            placeholder="Search 18+ tickers (e.g. TRENT, DIXON, POLYCAB)..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onFocus={() => setIsSearchFocused(true)}
-            onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
-            className="w-full rounded-xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface py-2.5 pl-9 pr-3 text-xs text-ink dark:text-white placeholder:text-ink-muted focus:border-forest focus:outline-none focus:ring-1 focus:ring-forest shadow-subtle"
-          />
-        </form>
+    <div className="space-y-5 pt-5">
+      {!companyId && <ScreenTitle title="Research" lede="Any NSE or BSE company; every figure labelled by its source." />}
 
-        {/* Autocomplete Menu */}
-        {isSearchFocused && searchSuggestions.length > 0 && (
-          <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-xl border border-divider bg-white dark:bg-ink-surface p-1 shadow-float">
-            {searchSuggestions.map((item) => (
-              <button
-                key={item.ticker}
-                type="button"
-                onMouseDown={() => {
-                  onSelectTicker(item.ticker);
-                  setSearchInput('');
-                  setIsSearchFocused(false);
-                }}
-                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs hover:bg-cream-light dark:hover:bg-ink-surfaceSubtle transition-colors"
-              >
-                <div>
-                  <span className="font-mono font-bold text-ink dark:text-white mr-2">
-                    {item.ticker}
-                  </span>
-                  <span className="text-ink-muted">{item.name}</span>
-                </div>
-                <Badge variant="sage" size="sm">
-                  {item.marketCapCategory}
-                </Badge>
-              </button>
-            ))}
-          </div>
+      {/* Search */}
+      <div className="relative">
+        <Search size={16} strokeWidth={1.75} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
+        <input
+          className={cx(inputCls, 'pl-10 pr-10')}
+          placeholder="Company name, NSE symbol, BSE code or Yahoo ticker (e.g. ITC, TRENT.NS)"
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+          aria-label="Search companies"
+        />
+        {term && (
+          <button onClick={() => setTerm('')} className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-ink-muted" aria-label="Clear search">
+            <X size={16} />
+          </button>
         )}
       </div>
 
-      {/* 2. Selected Company Header Card */}
-      <div className="rounded-2xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface p-4 sm:p-5 shadow-subtle space-y-3">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-2">
-              {formatTicker(selectedTicker)}
-              <Badge variant="sage" size="sm">
-                {activeCompany?.marketCapCategory || 'Large Cap'}
-              </Badge>
-              {isWatched && (
-                <span className="flex items-center gap-1 text-[11px] text-fin-amber font-medium">
-                  <Star size={11} className="fill-fin-amber" /> In Watchlist
-                </span>
+      {debounced.trim() && (
+        <Panel padded={false} className="overflow-hidden">
+          {search.isLoading ? (
+            <div className="flex items-center gap-2 p-4 text-xs text-ink-muted">
+              <Spinner size={14} /> Searching FINN and Yahoo Finance…
+            </div>
+          ) : search.isError ? (
+            <div className="p-4">
+              <ErrorState error={search.error} />
+            </div>
+          ) : (
+            <>
+              {(search.data?.items.length ?? 0) > 0 && (
+                <ul className="divide-y divide-divider dark:divide-ink-border">
+                  {search.data!.items.map((c) => (
+                    <li key={c.id}>
+                      <button
+                        onClick={() => {
+                          onSelectCompany(c.id);
+                          setTerm('');
+                        }}
+                        className="flex min-h-[56px] w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-cream-light dark:hover:bg-ink-surfaceSubtle"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <CompanyLogo {...c} size="sm" />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <Ticker symbol={c.nseSymbol ?? c.yahooSymbol} />
+                              {c.bseCode && <span className="font-mono text-[10px] text-ink-muted">BSE {c.bseCode}</span>}
+                            </div>
+                            <div className="truncate text-xs text-ink-muted">{c.name}</div>
+                          </div>
+                        </div>
+                        {c.isDemo ? <DemoPill /> : <span className="text-[10.5px] text-ink-subtle">In FINN</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               )}
-            </div>
-            <p className="text-xs text-ink-muted mt-0.5">
-              {activeCompany?.name} • {activeCompany?.sector}
-            </p>
-          </div>
-
-          <div className="text-right">
-            <div className="font-mono text-base font-bold text-ink dark:text-white">
-              ₹{activeCompany ? activeCompany.currentPrice.toLocaleString('en-IN') : '0.00'}
-            </div>
-            <div className="text-[11px] font-mono flex items-center justify-end gap-1">
-              {activeCompany && activeCompany.changePercent >= 0 ? (
-                <span className="text-forest dark:text-emerald font-bold flex items-center">
-                  <TrendingUp size={11} className="mr-0.5" /> +{activeCompany.changePercent}% (1D)
-                </span>
-              ) : (
-                <span className="text-fin-red font-bold flex items-center">
-                  <TrendingDown size={11} className="mr-0.5" /> {activeCompany?.changePercent}% (1D)
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Links & Watchlist Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-divider pt-3 text-[11px]">
-          <div className="flex items-center gap-2">
-            <span className="text-ink-muted">20-DMA Vol:</span>
-            <span className="font-mono font-bold text-ink dark:text-white">
-              {activeCompany ? `${activeCompany.volumeRatio}x` : '1.0x'}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onToggleWatchlist(selectedTicker)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${
-                isWatched
-                  ? 'bg-forest text-white border-forest'
-                  : 'bg-white border-divider text-ink hover:bg-cream-light'
-              }`}
-            >
-              <Star size={12} className={isWatched ? 'fill-white' : ''} />
-              <span>{isWatched ? 'Tracking' : 'Add to Watchlist'}</span>
-            </button>
-
-            {activeCompany?.screenerUrl && (
-              <a
-                href={activeCompany.screenerUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-divider text-xs text-forest dark:text-emerald hover:underline"
-              >
-                <span>Screener.in</span>
-                <ExternalLink size={11} />
-              </a>
-            )}
-
-            {activeCompany?.irUrl && (
-              <a
-                href={activeCompany.irUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-divider text-xs text-forest dark:text-emerald hover:underline"
-              >
-                <span>Official IR</span>
-                <ExternalLink size={11} />
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Segmented Exploration Tabs */}
-      <div className="flex border-b border-divider text-xs overflow-x-auto scrollbar-none gap-2">
-        {[
-          { id: 'overview', label: 'Overview & KPIs' },
-          { id: 'financials', label: 'Guidance Audit' },
-          { id: 'thesis', label: 'Quality & Thesis' },
-          { id: 'sources', label: 'Filings & AI' },
-        ].map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as ResearchTab)}
-              className={`py-2 px-2.5 font-medium whitespace-nowrap border-b-2 transition-colors ${
-                isActive
-                  ? 'border-forest text-forest dark:border-emerald dark:text-emerald font-semibold'
-                  : 'border-transparent text-ink-muted hover:text-ink'
-              }`}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* TAB CONTENT */}
-
-      {/* 1. OVERVIEW & 8-TILE FINANCIAL SCORECARD */}
-      {activeTab === 'overview' && (
-        <div className="space-y-4">
-          {/* Business Summary Card */}
-          <div className="rounded-2xl border border-divider bg-white dark:bg-ink-surface p-4 sm:p-5 shadow-subtle space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
-              Business Snapshot
-            </h3>
-            <p className="text-xs sm:text-sm text-ink-muted leading-relaxed">
-              {research.businessSnapshot.summary}
-            </p>
-
-            {/* Core Moat Highlight Box */}
-            <div className="rounded-xl bg-sage/60 dark:bg-ink-surfaceSubtle p-3.5 border border-sage/80 flex items-start gap-2.5">
-              <ShieldCheck size={18} className="text-forest dark:text-emerald shrink-0 mt-0.5" />
-              <div className="text-xs text-ink dark:text-white leading-relaxed">
-                <span className="font-bold text-forest dark:text-emerald">Core Moat: </span>
-                {research.businessSnapshot.keyMoat}
-              </div>
-            </div>
-
-            {/* Segment Breakdown */}
-            <div className="space-y-2 pt-2">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-ink-muted block">
-                Revenue Contribution by Segment
-              </span>
-              <div className="space-y-2">
-                {research.businessSnapshot.segments.map((seg) => (
-                  <div key={seg.name} className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="font-medium text-ink dark:text-white">{seg.name}</span>
-                      <span className="font-mono text-ink-muted">
-                        {seg.sharePercent}% (+{seg.growthYoY}% YoY)
-                      </span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-cream-dark dark:bg-ink-surfaceSubtle overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-forest dark:bg-emerald transition-all"
-                        style={{ width: `${seg.sharePercent}%` }}
-                      />
-                    </div>
+              {(search.data?.external?.length ?? 0) > 0 && (
+                <div className="border-t border-divider dark:border-ink-border">
+                  <div className="flex items-center gap-1.5 px-4 pt-3 text-2xs font-medium uppercase tracking-eyebrow text-ink-subtle">
+                    <Globe size={12} /> From Yahoo Finance
                   </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* 8-Tile Institutional Financial Scorecard */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
-              Financial Scorecard (TTM Audited)
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {[
-                { label: 'Revenue TTM', value: research.financialSnapshot.revenueTtm, desc: 'Consolidated' },
-                { label: 'EBITDA Margin', value: research.financialSnapshot.ebitdaMargin, desc: 'Operating corridor' },
-                { label: 'ROCE', value: research.financialSnapshot.roce, desc: 'Capital return', color: 'text-forest dark:text-emerald' },
-                { label: 'ROE', value: research.financialSnapshot.roe, desc: 'Equity return', color: 'text-forest dark:text-emerald' },
-                { label: 'Debt to Equity', value: research.financialSnapshot.debtToEquity, desc: 'Manageable leverage' },
-                { label: 'Working Capital', value: `${research.financialSnapshot.workingCapitalDays} days`, desc: 'Cash cycle' },
-                { label: 'Free Cash Flow', value: research.financialSnapshot.fcfTtm, desc: 'After capex' },
-                {
-                  label: 'CFO / PAT',
-                  value: `${research.financialSnapshot.cfoPatConversion}x`,
-                  desc: 'Cash conversion',
-                  color: research.financialSnapshot.cfoPatConversion >= 1.0 ? 'text-forest dark:text-emerald' : 'text-fin-amber',
-                },
-              ].map((kpi) => (
-                <div
-                  key={kpi.label}
-                  className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3 shadow-subtle"
-                >
-                  <span className="text-[10px] font-mono text-ink-muted block">{kpi.label}</span>
-                  <div className={`font-mono text-sm font-bold mt-1 ${kpi.color || 'text-ink dark:text-white'}`}>
-                    {kpi.value}
-                  </div>
-                  <span className="text-[9px] text-ink-subtle block mt-0.5">{kpi.desc}</span>
+                  <ul className="divide-y divide-divider dark:divide-ink-border">
+                    {search.data!.external!.map((c) => (
+                      <li key={c.yahooSymbol ?? c.name}>
+                        <button
+                          onClick={() => c.yahooSymbol && pickExternal(c.yahooSymbol)}
+                          disabled={importCompany.isPending}
+                          className="flex min-h-[56px] w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-cream-light disabled:opacity-60 dark:hover:bg-ink-surfaceSubtle"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <CompanyLogo {...c} size="sm" />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <Ticker symbol={c.yahooSymbol} />
+                                <span className="text-[10px] text-ink-muted">{c.exchange}</span>
+                              </div>
+                              <div className="truncate text-xs text-ink-muted">{c.name}</div>
+                            </div>
+                          </div>
+                          {importCompany.isPending && importCompany.variables === c.yahooSymbol ? (
+                            <span className="flex items-center gap-1.5 text-[11px] text-ink-muted">
+                              <Spinner size={12} /> Retrieving data…
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-forest dark:text-emerald">
+                              <CloudDownload size={13} /> Research
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
+              )}
+              {(search.data?.items.length ?? 0) === 0 && (search.data?.external?.length ?? 0) === 0 && (
+                <div className="p-4 text-xs leading-relaxed text-ink-muted">
+                  No listed company matches “{debounced}”. Try the NSE symbol (e.g. ASIANPAINT) or the company name. BSE numeric codes resolve only for companies already in FINN.
+                </div>
+              )}
+              {importCompany.isError && (
+                <div className="border-t border-divider p-3 dark:border-ink-border">
+                  <ErrorState error={importCompany.error} />
+                </div>
+              )}
+            </>
+          )}
+        </Panel>
       )}
 
-      {/* 2. GUIDANCE AUDIT (NARRATIVE VS NUMBERS & LEDGER) */}
-      {activeTab === 'financials' && (
-        <div className="space-y-4">
-          <div className="space-y-1">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
-              Narrative vs Numbers Guidance Audit
-            </h3>
-            <p className="text-xs text-ink-muted">
-              Cross-referencing concall promises with subsequent financial prints.
-            </p>
-          </div>
+      {!companyId ? (
+        <PortfolioPicks onPick={onSelectCompany} />
+      ) : research.isLoading ? (
+        <LoadingBlock rows={5} />
+      ) : research.isError || !research.data ? (
+        <ErrorState error={research.error} onRetry={() => research.refetch()} />
+      ) : (
+        <>
+          <CompanyHeader
+            data={research.data}
+            onClose={() => onSelectCompany(null)}
+            onOpenCompany={() => onOpenCompany(companyId)}
+            refreshing={refresh.isPending}
+            onRefreshData={() => refresh.mutate()}
+          />
 
-          <div className="space-y-2.5">
-            {research.narrativeVsNumbers.map((audit, idx) => (
-              <div
-                key={idx}
-                className="rounded-2xl border border-divider bg-white dark:bg-ink-surface p-4 shadow-subtle space-y-2"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-forest dark:text-emerald bg-sage px-2 py-0.5 rounded">
-                    {audit.period}
-                  </span>
-                  <Badge
-                    variant={audit.varianceType === 'beat' ? 'forest' : audit.varianceType === 'met' ? 'sage' : 'red'}
-                    size="sm"
+          <div className="flex flex-col gap-2 xs:flex-row">
+            {report ? (
+              <>
+                <PrimaryButton busy={running} onClick={() => run('refresh')} className="flex-1">
+                  <RefreshCw size={14} strokeWidth={1.75} /> Refresh research
+                </PrimaryButton>
+                {research.data.history.length > 1 && (
+                  <select
+                    className="min-h-[44px] rounded-lg border border-divider bg-paper px-2 text-[12px] dark:border-ink-border dark:bg-ink-surfaceSubtle"
+                    value={report.id}
+                    onChange={(e) => setReportId(e.target.value)}
+                    aria-label="Report version"
                   >
-                    {audit.varianceType.toUpperCase()} ({audit.variance})
-                  </Badge>
-                </div>
+                    {research.data.history.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {dateTime(h.createdAt)} · {h.generator}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </>
+            ) : (
+              <PrimaryButton busy={running} onClick={() => run('generate')} className="flex-1">
+                <Sparkles size={14} strokeWidth={1.75} /> Generate research
+              </PrimaryButton>
+            )}
+          </div>
+          {refresh.isError && <ErrorState error={refresh.error} />}
+          {start.isError && <ErrorState error={start.error} />}
+          {current?.status === 'failed' && <ErrorState error={new Error(current.error ?? 'Research generation failed.')} onRetry={() => run(report ? 'refresh' : 'generate')} />}
+          {!health.data?.ai.configured && (
+            <p className="text-[11.5px] leading-relaxed text-ink-muted">
+              AI is not configured ({health.data?.ai.reason ?? 'no provider'}). Reports contain reported facts and calculated metrics; AI sections are marked unavailable until an AI key is added on the server.
+            </p>
+          )}
 
-                <div className="text-xs space-y-1">
-                  <div>
-                    <span className="text-ink-muted font-medium">Management Statement: </span>
-                    <span className="text-ink dark:text-white font-normal">"{audit.managementGuidance}"</span>
-                  </div>
-                  <div>
-                    <span className="text-ink-muted font-medium">Actual Delivered: </span>
-                    <span className="text-ink dark:text-white font-normal">{audit.actualDelivered}</span>
-                  </div>
-                </div>
+          <AnimatePresence>
+            {running && <AnalysisProgress job={current ?? null} companyName={research.data.company.name} aiLabel={health.data?.ai.configured ? health.data.ai.label : null} />}
+          </AnimatePresence>
 
-                <div className="border-t border-divider pt-2 text-[10px] font-mono text-ink-muted">
-                  Source: {audit.sourceDoc}
-                </div>
-              </div>
+          {running ? (
+            current?.partial ? (
+              <ReportView report={liveReport(current)} companyId={companyId} progress={current.progress} live />
+            ) : (
+              <LoadingBlock rows={4} />
+            )
+          ) : !report ? (
+            <EmptyState title="No research report yet" body="Generate one to assemble everything FINN holds about this company, with sources." />
+          ) : (
+            <ReportView report={report} companyId={companyId} />
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+
+const CompanyHeader: React.FC<{ data: ResearchResponse; onClose: () => void; onOpenCompany: () => void; refreshing: boolean; onRefreshData: () => void }> = ({ data, onClose, onOpenCompany, refreshing, onRefreshData }) => {
+  const c = data.company;
+  const q = data.quote;
+  return (
+    <Panel className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <button onClick={onOpenCompany} className="group flex min-w-0 items-start gap-4 text-left">
+          <CompanyLogo {...c} size="lg" className="mt-1" />
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Ticker symbol={c.yahooSymbol ?? c.nseSymbol} />
+              {c.exchange && <span className="text-[11px] text-ink-subtle">{c.exchange}</span>}
+              {c.isDemo && <DemoPill />}
+            </span>
+            <h1 className="mt-1.5 font-serif text-[28px] leading-[1.1] text-forest-dark transition-colors group-hover:text-forest dark:text-white">{c.name}</h1>
+            <span className="mt-1 block text-[12.5px] text-ink-muted">{[c.sector, c.industry, c.country].filter(Boolean).join(' · ') || 'Sector not available'}</span>
+          </span>
+        </button>
+        <button onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink-muted hover:bg-cream-light dark:hover:bg-ink-surfaceSubtle" aria-label="Close research">
+          <X size={18} />
+        </button>
+      </div>
+
+      {q && <QuoteStrip quote={q} />}
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-divider pt-3 dark:border-ink-border">
+        <FreshnessLine items={data.freshness} />
+        <button onClick={onRefreshData} disabled={refreshing} className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-2 text-[12px] font-semibold text-forest disabled:opacity-60 dark:text-emerald">
+          <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? 'Refreshing from Yahoo…' : 'Refresh data'}
+        </button>
+      </div>
+    </Panel>
+  );
+};
+
+const QuoteStrip: React.FC<{ quote: Quote }> = ({ quote: q }) => {
+  const range = q.fiftyTwoWeekHigh && q.fiftyTwoWeekLow ? q.fiftyTwoWeekHigh - q.fiftyTwoWeekLow : null;
+  const pos = range ? ((q.lastPrice - q.fiftyTwoWeekLow!) / range) * 100 : null;
+  const mcapCr = q.marketCap ? q.marketCap / (q.currency === 'INR' ? 1e7 : 1e6) : null;
+  return (
+    <div className="grid gap-4">
+      <div>
+        <div className="font-mono text-[30px] font-medium leading-none text-ink dark:text-white">{inr(q.lastPrice)}</div>
+        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11.5px]">
+          <Change value={q.changePercent} />
+          <span className="text-ink-muted">
+            {TIMING_LABEL[q.quoteTiming ?? 'end_of_day']} · {shortDate(q.tradeDate)}
+            {q.quoteTiming === 'delayed' && q.delayMinutes ? ` · ~${q.delayMinutes} min delay` : ''}
+          </span>
+          {q.isDemo && <DemoPill />}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11.5px]">
+        <div>
+          <Eyebrow>Prev. close</Eyebrow>
+          <div className="mt-0.5 font-mono text-ink dark:text-ink-light">{inr(q.previousClose)}</div>
+        </div>
+        <div>
+          <Eyebrow>Market cap</Eyebrow>
+          <div className="mt-0.5 font-mono text-ink dark:text-ink-light">{mcapCr ? `₹${Math.round(mcapCr).toLocaleString('en-IN')} Cr` : 'Data unavailable'}</div>
+        </div>
+        <div>
+          <Eyebrow>Avg volume</Eyebrow>
+          <div className="mt-0.5 font-mono text-ink dark:text-ink-light">{q.averageVolume ? Math.round(q.averageVolume).toLocaleString('en-IN') : 'Data unavailable'}</div>
+        </div>
+        {pos !== null && (
+          <div className="col-span-2">
+            <div className="flex justify-between font-mono text-[10.5px] text-ink-muted">
+              <span>52W low {inr(q.fiftyTwoWeekLow)}</span>
+              <span>52W high {inr(q.fiftyTwoWeekHigh)}</span>
+            </div>
+            <div className="relative mt-1 h-1 rounded-full bg-cream-dark dark:bg-ink-surfaceSubtle">
+              <div className="absolute -top-1 h-3 w-[3px] rounded-full bg-forest dark:bg-emerald" style={{ left: `calc(${Math.min(100, Math.max(0, pos))}% - 1.5px)` }} />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const FreshnessLine: React.FC<{ items: Freshness[] }> = ({ items }) => {
+  if (items.length === 0) return <span className="text-[11px] text-ink-muted">No live data retrieved yet</span>;
+  const ok = items.filter((i) => i.status === 'ok');
+  const failed = items.filter((i) => i.status === 'failed');
+  const newest = ok.reduce<string | null>((m, i) => (!m || i.fetchedAt > m ? i.fetchedAt : m), null);
+  return (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-muted">
+      <span className={cx('h-1.5 w-1.5 rounded-full', failed.length ? 'bg-fin-amber' : 'bg-fin-up')} />
+      {newest ? `Data updated ${relativeTime(newest)} · Yahoo Finance (yfinance)` : 'Data not yet retrieved'}
+      {failed.length > 0 && <span className="text-fin-amber">· {failed.map((f) => f.dataset).join(', ')} refresh failed</span>}
+    </span>
+  );
+};
+
+const STAGES: Array<{ id: ResearchJob['stage'][]; label: string }> = [
+  { id: ['queued', 'data'], label: 'Retrieving market data and financial statements' },
+  { id: ['analysis'], label: 'Computing metrics from reported figures' },
+  { id: ['ai'], label: 'Generating evidence-cited analysis' },
+  { id: ['saving', 'done'], label: 'Verifying citations and saving' },
+];
+
+/** A stored report shape built from the sections a running job has completed so far. */
+const liveReport = (job: ResearchJob): ResearchReport => ({
+  id: job.id,
+  companyId: job.companyId,
+  status: 'partial',
+  generator: 'in progress',
+  sections: job.partial!,
+  limitations: [],
+  dataAsOf: null,
+  isDemo: false,
+  createdAt: job.createdAt,
+});
+
+const AnalysisProgress: React.FC<{ job: ResearchJob | null; companyName: string; aiLabel: string | null }> = ({ job, companyName, aiLabel }) => {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const started = job ? new Date(job.createdAt).getTime() : Date.now();
+    const tick = () => setElapsed(Math.max(0, Math.round((Date.now() - started) / 1000)));
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [job?.createdAt]);
+  const stageIndex = job ? STAGES.findIndex((st) => st.id.includes(job.stage)) : 0;
+  const stages = aiLabel ? STAGES : STAGES.filter((st) => !st.id.includes('ai'));
+  const current = aiLabel ? stageIndex : Math.min(stageIndex, stages.length - 1);
+  const progress = job?.progress ?? {};
+  const aiPending = SECTIONS.filter((s) => progress[s.key] === 'loading');
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.3, ease: EASE_OUT }}>
+      <Panel className="space-y-4" as="section" aria-live="polite" aria-label="Research in progress">
+        <div className="flex items-start gap-3">
+          <span className="relative mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sage text-forest dark:bg-emerald-subtle dark:text-emerald">
+            <Sparkles size={15} strokeWidth={1.75} />
+            <span className="absolute inset-0 animate-ping rounded-full bg-forest/10 dark:bg-emerald/10" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="font-serif text-[19px] leading-tight text-forest-dark dark:text-white">FINN Intelligence is analyzing {companyName}…</div>
+            <div className="mt-0.5 text-[11.5px] text-ink-muted">
+              {aiLabel ? `${aiLabel} · ` : 'Facts and metrics only (AI not configured) · '}
+              <span className="font-mono">{elapsed}s</span>
+            </div>
+          </div>
+        </div>
+        <ol className="space-y-1.5 text-[12.5px]">
+          {stages.map((st, k) => (
+            <li key={st.label} className={cx('flex items-center gap-2', k < current ? 'text-forest dark:text-emerald' : k === current ? 'text-ink dark:text-white' : 'text-ink-subtle')}>
+              {k < current ? <Check size={13} strokeWidth={2.25} /> : k === current ? <Spinner size={13} /> : <span className="mx-[3px] h-1.5 w-1.5 rounded-full bg-divider dark:bg-ink-border" />}
+              {st.label}
+              {st.id.includes('ai') && k === current && aiPending.length > 0 && <span className="text-ink-muted">· {aiPending.length} section{aiPending.length === 1 ? '' : 's'} left</span>}
+            </li>
+          ))}
+        </ol>
+        {job?.partial && (
+          <div className="flex flex-wrap gap-1.5" aria-label="Section status">
+            {SECTIONS.map((s) => (
+              <SectionChip key={s.key} letter={s.letter} title={s.title} state={progress[s.key] ?? job.partial?.[s.key]?.status ?? 'loading'} />
             ))}
           </div>
+        )}
+        <p className="text-[11px] text-ink-muted">Sections appear as they complete. You can keep using FINN — progress continues in the background.</p>
+      </Panel>
+    </motion.div>
+  );
+};
 
-          {/* Active Guidance Ledger */}
-          <div className="space-y-2 pt-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
-              Active Forward Guidance Ledger
-            </h3>
-            <div className="space-y-2">
-              {research.guidanceLedger.map((g, idx) => (
-                <div
-                  key={idx}
-                  className="rounded-xl border border-divider bg-white dark:bg-ink-surface p-3.5 shadow-subtle space-y-1.5"
-                >
-                  <div className="flex justify-between items-center text-xs">
-                    <Badge variant="forest" size="sm">
-                      {g.metric}
-                    </Badge>
-                    <span className="font-mono text-[10px] text-ink-muted">Target: {g.targetPeriod}</span>
-                  </div>
-                  <p className="text-xs text-ink dark:text-white leading-relaxed">
-                    "{g.managementStatement}"
-                  </p>
-                  <div className="text-[10px] font-mono text-ink-muted">
-                    Source: {g.concallSource}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+const SectionChip: React.FC<{ letter: string; title: string; state: SectionProgress }> = ({ letter, title, state }) => (
+  <span
+    title={`${title}: ${state === 'loading' ? 'analyzing' : state}`}
+    className={cx(
+      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium',
+      state === 'loading' && 'bg-cream-dark text-ink-muted dark:bg-ink-surfaceSubtle',
+      state === 'available' && 'bg-sage text-forest dark:bg-emerald-subtle dark:text-emerald',
+      state === 'partial' && 'bg-fin-amber/10 text-fin-amber',
+      state === 'unavailable' && 'bg-cream-dark/60 text-ink-subtle dark:bg-ink-surfaceSubtle',
+    )}
+  >
+    <span className="font-mono">{letter}</span>
+    {state === 'loading' ? <Spinner size={10} /> : state === 'unavailable' ? <Minus size={10} /> : <Check size={10} strokeWidth={2.5} />}
+  </span>
+);
+
+// ---------------------------------------------------------------------------
+
+const ReportView: React.FC<{ report: ResearchReport; companyId: string; progress?: Partial<Record<SectionKey, SectionProgress>>; live?: boolean }> = ({ report, companyId, progress, live }) => {
+  const [open, setOpen] = useState<Set<string>>(() => new Set(['summary', 'financialSnapshot']));
+  const toggle = (k: string) =>
+    setOpen((s) => {
+      const n = new Set(s);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  const traj = report.sections.businessTrajectory?.data as { annual?: FinancialPoint[]; quarterly?: FinancialPoint[]; currency?: string; unit?: string } | undefined;
+  // Category navigation: open the section, then bring it to the top of the screen.
+  const jump = (k: string) => {
+    setOpen((s) => new Set(s).add(k));
+    requestAnimationFrame(() => document.getElementById(`research-${k}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+  const navItems = [...SECTIONS.filter((s) => report.sections[s.key]).map((s) => ({ key: s.key as string, label: s.short })), ...(live ? [] : [{ key: 'evidence', label: 'Evidence' }])];
+
+  return (
+    <div className="space-y-4">
+      <nav aria-label="Research sections" className="sticky top-0 z-10 -mx-4 border-b border-divider/70 bg-cream/95 px-4 py-2 backdrop-blur dark:border-ink-border dark:bg-ink-bg/95">
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
+          {navItems.map((n) => (
+            <button
+              key={n.key}
+              onClick={() => jump(n.key)}
+              className="min-h-[32px] shrink-0 rounded-full border border-divider bg-paper px-3 text-[12px] font-medium text-ink-muted transition-colors hover:border-forest/40 hover:text-forest dark:border-ink-border dark:bg-ink-surface dark:hover:text-emerald"
+            >
+              {n.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {!live && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-muted">
+          <span className="font-mono">{report.generator}</span>
+          <span>· generated {dateTime(report.createdAt)}</span>
+          {report.dataAsOf && <span>· data as of {dateTime(report.dataAsOf)}</span>}
+          {report.isDemo && <DemoPill />}
         </div>
       )}
 
-      {/* 3. QUALITY & THESIS (CASH QUALITY & BULL/BEAR) */}
-      {activeTab === 'thesis' && (
-        <div className="space-y-4">
-          {/* Cash Quality Box */}
-          <div className="rounded-2xl border border-divider bg-white dark:bg-ink-surface p-4 sm:p-5 shadow-subtle space-y-2.5">
-            <div className="flex justify-between items-center">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
-                Cash Flow & Earnings Quality
-              </h3>
-              <Badge variant={research.cashQualityAnalysis.redFlagsDetected ? 'red' : 'forest'} size="sm">
-                {research.cashQualityAnalysis.redFlagsDetected ? 'Review Needed' : 'Clean Quality'}
-              </Badge>
-            </div>
-            <p className="text-xs sm:text-sm text-ink-muted leading-relaxed">
-              {research.cashQualityAnalysis.cfoVsPatCommentary}
-            </p>
-            <div className="grid grid-cols-2 gap-2 border-t border-divider pt-2 text-xs">
-              <div>
-                <span className="text-ink-muted block text-[10px]">Working Capital:</span>
-                <span className="font-medium text-ink dark:text-white">{research.cashQualityAnalysis.workingCapitalTrend}</span>
-              </div>
-              <div>
-                <span className="text-ink-muted block text-[10px]">FCF Yield:</span>
-                <span className="font-medium text-forest dark:text-emerald">{research.cashQualityAnalysis.fcfYield}</span>
-              </div>
-            </div>
+      {report.limitations.length > 0 && (
+        <div className="space-y-1 border-l-2 border-fin-amber/60 pl-3.5 text-[11.5px] leading-relaxed text-ink-muted">
+          <div className="flex items-center gap-1.5 font-semibold text-fin-amber">
+            <AlertCircle size={13} /> Limitations
           </div>
-
-          {/* Institutional Bull vs Bear Debate */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
-              Institutional Bull vs Bear Thesis
-            </h3>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {/* Bull Case */}
-              <div className="rounded-2xl border border-divider bg-white dark:bg-ink-surface p-4 shadow-subtle space-y-2">
-                <span className="text-xs font-bold text-forest dark:text-emerald uppercase tracking-wider block">
-                  Bull Thesis & Catalysts
-                </span>
-                <ul className="space-y-1.5 text-xs text-ink-muted leading-relaxed">
-                  {research.bullBear.bullCase.map((b, i) => (
-                    <li key={i} className="flex items-start gap-1.5">
-                      <span className="text-forest font-bold">•</span>
-                      <span>{b}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Bear Case */}
-              <div className="rounded-2xl border border-divider bg-white dark:bg-ink-surface p-4 shadow-subtle space-y-2">
-                <span className="text-xs font-bold text-fin-red uppercase tracking-wider block">
-                  Bear Thesis & Risks
-                </span>
-                <ul className="space-y-1.5 text-xs text-ink-muted leading-relaxed">
-                  {research.bullBear.bearCase.map((b, i) => (
-                    <li key={i} className="flex items-start gap-1.5">
-                      <span className="text-fin-red font-bold">•</span>
-                      <span>{b}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
+          <ul className="list-disc space-y-0.5 pl-4">
+            {report.limitations.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
         </div>
       )}
 
-      {/* 4. PRIMARY SOURCES & GROUNDED AI QUERY */}
-      {activeTab === 'sources' && (
-        <div className="space-y-4">
-          {/* Grounded AI Query Card */}
-          <div className="rounded-2xl border border-divider bg-white dark:bg-ink-surface p-4 sm:p-5 shadow-subtle space-y-3">
-            <div className="flex items-center gap-1.5 text-forest dark:text-emerald text-xs font-bold">
-              <Sparkles size={15} />
-              <span>Ask FINN about {selectedTicker}</span>
-            </div>
-            <p className="text-xs text-ink-muted leading-relaxed">
-              All findings are synthesized exclusively from primary statutory filings, MD&A statements, and earnings call transcripts.
-            </p>
+      {traj && ((traj.annual?.length ?? 0) > 1 || (traj.quarterly?.length ?? 0) > 1) && (
+        <Panel as="section" className="space-y-3">
+          <h3 className="font-serif text-[22px] leading-tight text-forest-dark dark:text-white">Financial overview</h3>
+          <FinancialChart annual={traj.annual ?? []} quarterly={traj.quarterly ?? []} currency={traj.currency ?? 'INR'} unit={traj.unit ?? 'crore'} />
+        </Panel>
+      )}
 
-            <form onSubmit={handleAskAI} className="space-y-2">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="e.g. Audit debt maturity profile or concall capex plans..."
-                  value={userQuery}
-                  onChange={(e) => setUserQuery(e.target.value)}
-                  className="w-full rounded-xl border border-divider bg-cream-light dark:bg-ink-surfaceSubtle py-2.5 pl-3 pr-10 text-xs text-ink dark:text-white placeholder:text-ink-muted focus:border-forest focus:outline-none focus:ring-1 focus:ring-forest"
-                />
-                <button
-                  type="submit"
-                  disabled={!userQuery.trim() || isQuerying}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-forest text-white p-1.5 hover:bg-forest-light disabled:opacity-50 transition-colors"
-                >
-                  <CornerDownLeft size={13} />
-                </button>
-              </div>
-            </form>
-
-            {isQuerying && (
-              <div className="p-3 text-xs text-ink-muted text-center animate-pulse">
-                Auditing primary filings and transcripts...
-              </div>
-            )}
-
-            {queryResponse && (
-              <div className="rounded-xl bg-sage/50 dark:bg-ink-surfaceSubtle p-3.5 border border-sage/80 space-y-2 text-xs">
-                <div className="flex items-center gap-1.5 font-bold text-forest dark:text-emerald text-[11px]">
-                  <ShieldCheck size={14} />
-                  <span>Audited Finding</span>
-                </div>
-                <p className="text-ink dark:text-white leading-relaxed font-normal">
-                  {queryResponse.finding}
-                </p>
-                <div className="text-[10px] font-mono text-ink-muted border-t border-divider pt-1.5">
-                  Citation: {queryResponse.citation}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Primary Source Documents Index */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
-              Primary Source Documents
-            </h3>
-            <div className="space-y-2">
-              {research.primarySources.map((doc, idx) => (
-                <a
-                  key={idx}
-                  href={doc.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center justify-between rounded-xl border border-divider bg-white dark:bg-ink-surface p-3 text-xs hover:border-forest shadow-subtle transition-colors group"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <FileText size={16} className="text-forest dark:text-emerald" />
-                    <div>
-                      <div className="font-semibold text-ink dark:text-white group-hover:text-forest transition-colors">
-                        {doc.title}
-                      </div>
-                      <div className="text-[10px] text-ink-muted">
-                        {doc.type} • {doc.period}
-                      </div>
+      <div className="space-y-2.5">
+        {SECTIONS.map((s) => {
+          const section = report.sections[s.key];
+          if (!section) return null;
+          const isOpen = open.has(s.key);
+          const loading = progress?.[s.key] === 'loading';
+          return (
+            <section key={s.key} id={`research-${s.key}`} className="scroll-mt-14 overflow-hidden rounded-card border border-divider bg-paper dark:border-ink-border dark:bg-ink-surface">
+              <button onClick={() => toggle(s.key)} aria-expanded={isOpen} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
+                <span className="w-5 shrink-0 font-mono text-[11px] text-ink-subtle">{s.letter}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-serif text-[17px] leading-tight text-forest-dark dark:text-white">{s.title}</span>
+                  <span className="text-[11px] text-ink-muted">
+                    {loading ? 'FINN Intelligence is writing this section…' : section.status === 'unavailable' ? 'Unavailable' : `${section.claims.length} item${section.claims.length === 1 ? '' : 's'}`}
+                  </span>
+                </span>
+                {loading ? (
+                  <span className="hidden shrink-0 items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-muted xs:inline-flex">
+                    <Spinner size={11} /> Analyzing
+                  </span>
+                ) : (
+                  <StatusDot status={section.status} />
+                )}
+                <ChevronDown size={16} className={cx('shrink-0 text-ink-subtle transition-transform duration-200', isOpen && 'rotate-180')} />
+              </button>
+              <AnimatePresence initial={false}>
+                {isOpen && (
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.28, ease: EASE_OUT }} className="overflow-hidden">
+                    <div className="space-y-4 border-t border-divider px-4 py-4 dark:border-ink-border">
+                      {loading && section.status === 'unavailable' ? null : <SectionBody sectionKey={s.key} section={section} />}
+                      {loading && (
+                        <div className="space-y-2" role="status" aria-label="Analysis in progress">
+                          <Skeleton className="h-3 w-11/12" />
+                          <Skeleton className="h-3 w-9/12" />
+                          <Skeleton className="h-3 w-10/12" />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <ExternalLink size={13} className="text-ink-muted group-hover:text-forest transition-colors" />
-                </a>
-              ))}
-            </div>
-          </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </section>
+          );
+        })}
+        {!live && (
+          <section id="research-evidence" className="scroll-mt-14 overflow-hidden rounded-card border border-divider bg-paper dark:border-ink-border dark:bg-ink-surface">
+            <button onClick={() => toggle('evidence')} aria-expanded={open.has('evidence')} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
+              <span className="w-5 shrink-0 font-mono text-[11px] text-ink-subtle">J</span>
+              <span className="flex-1 font-serif text-[18px] leading-tight text-forest-dark dark:text-white">Research evidence</span>
+              <ChevronDown size={16} className={cx('shrink-0 text-ink-subtle transition-transform duration-200', open.has('evidence') && 'rotate-180')} />
+            </button>
+            {open.has('evidence') && (
+              <div className="border-t border-divider px-4 py-4 dark:border-ink-border">
+                <EvidencePanel companyId={companyId} reportId={report.id} />
+              </div>
+            )}
+          </section>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const StatusDot: React.FC<{ status: ResearchSection['status'] }> = ({ status }) => (
+  <span
+    className={cx(
+      'hidden shrink-0 items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] xs:inline-flex',
+      status === 'available' ? 'text-forest dark:text-emerald' : status === 'partial' ? 'text-fin-amber' : 'text-ink-subtle',
+    )}
+  >
+    <span className={cx('h-1.5 w-1.5 rounded-full', status === 'available' ? 'bg-forest dark:bg-emerald' : status === 'partial' ? 'bg-fin-amber' : 'bg-ink-subtle')} />
+    {status}
+  </span>
+);
+
+const METRIC_SECTIONS: SectionKey[] = ['financialSnapshot', 'balanceSheet', 'cashQuality'];
+
+/** A claim that is a single labelled figure, e.g. "ROCE: 28.4%" (rendered in the metric grid). */
+const isMetricClaim = (c: Claim) =>
+  c.claimType !== 'ai_interpretation' && c.label !== 'Business description' && ((c.value !== undefined && c.value !== null) || /^[^:]{2,40}: [₹$\d\-−+.,%×x a-zA-Z()]{1,40}$/.test(c.text));
+
+const SectionBody: React.FC<{ sectionKey: SectionKey; section: ResearchSection }> = ({ sectionKey, section }) => {
+  const segments = (section.data as { segments?: Array<{ name: string; sharePercent: number; growthYoY: number }> } | undefined)?.segments;
+  const unanswered = sectionKey === 'summary' ? (section.data as { unanswered?: string[] } | undefined)?.unanswered : undefined;
+  return (
+    <>
+      {section.reason && <p className="text-[12px] leading-relaxed text-ink-muted">{section.reason}</p>}
+      {METRIC_SECTIONS.includes(sectionKey) && <MetricGrid claims={section.claims} />}
+      {sectionKey === 'businessSnapshot' && segments && <Segments segments={segments} />}
+      {sectionKey === 'bullBear' && section.claims.length > 0 ? (
+        <BullBear claims={section.claims} />
+      ) : sectionKey === 'narrativeVsNumbers' && Array.isArray(section.data) && section.data.length > 0 ? (
+        <NarrativeTable rows={section.data as NarrativeRow[]} claims={section.claims} />
+      ) : (
+        <ClaimList
+          claims={
+            sectionKey === 'businessSnapshot'
+              ? section.claims.filter((c) => c.label !== 'Segment')
+              : METRIC_SECTIONS.includes(sectionKey)
+                ? section.claims.filter((c) => !isMetricClaim(c))
+                : section.claims
+          }
+        />
+      )}
+      {unanswered && unanswered.length > 0 && (
+        <div className="rounded-xl bg-cream-light p-3 text-[12px] dark:bg-ink-surfaceSubtle">
+          <Eyebrow>Important unanswered questions</Eyebrow>
+          <ul className="mt-1.5 list-disc space-y-1 pl-4 text-ink dark:text-ink-light">
+            {unanswered.map((u) => (
+              <li key={u}>{u}</li>
+            ))}
+          </ul>
         </div>
       )}
+    </>
+  );
+};
+
+const MetricGrid: React.FC<{ claims: Claim[] }> = ({ claims }) => {
+  const metrics = claims.filter(isMetricClaim);
+  if (metrics.length === 0) return null;
+  return (
+    <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-divider bg-divider dark:border-ink-border dark:bg-ink-border">
+      {metrics.map((c, i) => {
+        const [label, ...rest] = c.text.split(': ');
+        const value = rest.join(': ').replace(/\s*\([^)]*\)\s*$/, '');
+        return (
+          <div key={i} className="bg-paper p-3.5 dark:bg-ink-surface" title={c.formula ? `Formula: ${c.formula}` : c.sourceTitle ?? undefined}>
+            <Eyebrow className="block truncate">{c.label ?? label}</Eyebrow>
+            <div className="mt-1.5 font-mono text-[16px] font-medium leading-tight text-ink dark:text-white">{value || 'Data unavailable'}</div>
+            <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-ink-subtle">
+              <span className={c.claimType === 'calculated_metric' ? 'text-ink-muted' : c.claimType === 'reported_fact' ? 'text-forest dark:text-emerald' : 'text-fin-amber'}>
+                {c.claimType === 'calculated_metric' ? 'Calculated' : c.claimType === 'reported_fact' ? 'Reported' : 'Demo note'}
+              </span>
+              {c.period && <span className="font-mono">· {c.period}</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const PortfolioPicks: React.FC<{ onPick: (id: string) => void }> = ({ onPick }) => {
+  const portfolio = usePortfolio();
+  const items = portfolio.data ?? [];
+  if (portfolio.isLoading) return <LoadingBlock rows={2} />;
+  if (items.length === 0) return <EmptyState title="Research any company" body="Search by name, NSE symbol or Yahoo ticker to open a structured research workspace." />;
+  return (
+    <section className="space-y-3">
+      <Eyebrow>From your portfolio</Eyebrow>
+      <ul className="divide-y divide-divider overflow-hidden rounded-card border border-divider bg-paper dark:divide-ink-border dark:border-ink-border dark:bg-ink-surface">
+        {items.map((h) => (
+          <li key={h.id}>
+            <button onClick={() => onPick(h.id)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-cream-light dark:hover:bg-ink-surfaceSubtle">
+              <CompanyLogo {...h} size="sm" />
+              <span className="min-w-0 flex-1">
+                <Ticker symbol={h.nseSymbol} />
+                <span className="block truncate text-[11.5px] text-ink-muted">{h.name}</span>
+              </span>
+              <Change value={h.quote?.changePercent} className="text-[11.5px]" />
+              <ChevronRight size={16} strokeWidth={1.75} className="shrink-0 text-ink-subtle" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};
+
+const ClaimList: React.FC<{ claims: Claim[] }> = ({ claims }) =>
+  claims.length === 0 ? null : (
+    <ul className="divide-y divide-divider dark:divide-ink-border">
+      {claims.map((c, i) => (
+        <li key={i} className="py-2.5 first:pt-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <ClaimTag type={c.claimType} />
+            {c.label && <Eyebrow>{c.label}</Eyebrow>}
+          </div>
+          <p className={cx('mt-1 leading-relaxed text-ink dark:text-ink-light', c.label === 'Business description' ? 'text-[13px]' : 'text-sm')}>{c.text}</p>
+          {(c.formula || c.sourceTitle) && (
+            <p className="mt-0.5 font-mono text-[10.5px] text-ink-muted">
+              {c.formula && <>Formula: {c.formula}</>}
+              {c.formula && c.sourceTitle && ' · '}
+              {c.sourceTitle && <>Source: {c.sourceTitle}</>}
+            </p>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+
+const Segments: React.FC<{ segments: Array<{ name: string; sharePercent: number; growthYoY: number }> }> = ({ segments }) => (
+  <div className="space-y-2.5">
+    <div className="flex items-center gap-1.5">
+      <Eyebrow>Revenue by segment</Eyebrow>
+      <ClaimTag type="reported_fact" />
+    </div>
+    {segments.map((s) => (
+      <div key={s.name} className="space-y-1">
+        <div className="flex justify-between gap-2 text-xs">
+          <span className="font-medium text-ink dark:text-white">{s.name}</span>
+          <span className="font-mono text-ink-muted">
+            {s.sharePercent}% · {s.growthYoY > 0 ? '+' : ''}
+            {s.growthYoY}% YoY
+          </span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-cream-dark dark:bg-ink-surfaceSubtle">
+          <div className="h-full rounded-full bg-forest dark:bg-emerald" style={{ width: `${s.sharePercent}%` }} />
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+const BullBear: React.FC<{ claims: Claim[] }> = ({ claims }) => {
+  const bull = claims.filter((c) => c.label === 'Bull');
+  const bear = claims.filter((c) => c.label === 'Bear');
+  const Col = ({ title, items, tone }: { title: string; items: Claim[]; tone: string }) => (
+    <div className="space-y-2 rounded-xl border border-divider p-3 dark:border-ink-border">
+      <div className={cx('text-xs font-bold uppercase tracking-wider', tone)}>{title}</div>
+      {items.length === 0 ? (
+        <p className="text-xs text-ink-muted">No supported points.</p>
+      ) : (
+        <ul className="space-y-2.5">
+          {items.map((c, i) => (
+            <li key={i} className="text-sm leading-relaxed text-ink dark:text-ink-light">
+              <ClaimTag type={c.claimType} />
+              <p className="mt-1">{c.text}</p>
+              {c.sourceTitle && <p className="font-mono text-[10.5px] text-ink-muted">Source: {c.sourceTitle}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+  return (
+    <div className="grid gap-3">
+      <Col title="Bull case" items={bull} tone="text-forest dark:text-emerald" />
+      <Col title="Bear case" items={bear} tone="text-fin-red" />
+    </div>
+  );
+};
+
+interface NarrativeRow {
+  period?: string;
+  statement: string;
+  statementDate?: string;
+  source?: string;
+  actualText?: string;
+  variance?: string;
+  assessment: string | null;
+  expected?: { completion: string | null; capexCr: number | null };
+  actual?: { completion: string | null; capexCr: number | null };
+  delayDays?: number | null;
+}
+
+const NarrativeTable: React.FC<{ rows: NarrativeRow[]; claims: Claim[] }> = ({ rows, claims }) => {
+  const interpretations = claims.filter((c) => c.claimType === 'ai_interpretation');
+  return (
+    <div className="space-y-3">
+      {rows.map((r, i) => (
+        <div key={i} className="space-y-2 rounded-xl border border-divider p-3 text-xs dark:border-ink-border">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono font-semibold text-forest dark:text-emerald">{r.period ?? (r.statementDate ? shortDate(r.statementDate) : '')}</span>
+            {r.assessment && <span className="rounded-md bg-cream-dark px-1.5 py-0.5 text-[10px] font-semibold uppercase text-ink dark:bg-ink-surfaceSubtle">{humanize(r.assessment)}</span>}
+          </div>
+          <div>
+            <Eyebrow>Management statement</Eyebrow>
+            <p className="mt-0.5 text-sm text-ink dark:text-ink-light">{r.statement}</p>
+            {r.source && <p className="font-mono text-[10.5px] text-ink-muted">Source: {r.source}</p>}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <Eyebrow>Expected</Eyebrow>
+              <p className="mt-0.5 text-ink dark:text-ink-light">{r.expected ? `${r.expected.completion ? shortDate(r.expected.completion) : 'no date'}${r.expected.capexCr ? ` · ₹${r.expected.capexCr} Cr` : ''}` : '—'}</p>
+            </div>
+            <div>
+              <Eyebrow>Actual</Eyebrow>
+              <p className="mt-0.5 text-ink dark:text-ink-light">{r.actualText ?? (r.actual ? `${r.actual.completion ? shortDate(r.actual.completion) : 'not reported'}${r.actual.capexCr ? ` · ₹${r.actual.capexCr} Cr` : ''}` : '—')}</p>
+            </div>
+          </div>
+          <div>
+            <Eyebrow>Variance</Eyebrow>
+            <p className="mt-0.5 font-mono text-ink dark:text-ink-light">{r.variance ?? (r.delayDays !== null && r.delayDays !== undefined ? (r.delayDays <= 30 ? 'On schedule' : `${Math.round(r.delayDays / 30.44)} months late`) : 'Not computable')}</p>
+          </div>
+        </div>
+      ))}
+      {interpretations.length > 0 && <ClaimList claims={interpretations} />}
+    </div>
+  );
+};
+
+const EvidencePanel: React.FC<{ companyId: string; reportId: string }> = ({ companyId, reportId }) => {
+  const evidence = useEvidence(companyId, reportId, true);
+  if (evidence.isLoading) return <LoadingBlock rows={3} />;
+  if (evidence.isError || !evidence.data) return <ErrorState error={evidence.error} onRetry={() => evidence.refetch()} />;
+  const docs = evidence.data.documents;
+  const counts = evidence.data.items.reduce<Record<string, number>>((acc, e) => {
+    acc[e.claimType] = (acc[e.claimType] ?? 0) + 1;
+    return acc;
+  }, {});
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2 text-[11px] text-ink-muted">
+        {Object.entries(counts).map(([type, n]) => (
+          <span key={type} className="inline-flex items-center gap-1">
+            <ClaimTag type={type as Claim['claimType']} /> {n}
+          </span>
+        ))}
+      </div>
+      <Eyebrow>Source documents ({docs.length})</Eyebrow>
+      {docs.length === 0 ? (
+        <EmptyState title="No source documents stored" />
+      ) : (
+        <ul className="space-y-2">
+          {docs.map((d) => (
+            <li key={d.id} className="flex items-start gap-2 rounded-xl border border-divider p-3 text-xs dark:border-ink-border">
+              <FileText size={14} className="mt-0.5 shrink-0 text-forest dark:text-emerald" />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-ink dark:text-white">{d.title}</div>
+                <div className="text-ink-muted">
+                  {d.provider}
+                  {d.publishedAt ? ` · ${shortDate(d.publishedAt)}` : ''}
+                </div>
+                {d.url ? (
+                  <a href={d.url} target="_blank" rel="noreferrer noopener" className="mt-1 inline-flex items-center gap-1 font-semibold text-forest dark:text-emerald">
+                    Open original <ExternalLink size={11} />
+                  </a>
+                ) : (
+                  <p className="mt-0.5 text-[10.5px] text-ink-subtle">No original document link available.</p>
+                )}
+              </div>
+              {d.isDemo && <DemoPill />}
+            </li>
+          ))}
+        </ul>
+      )}
+      <SecondaryButton className="w-full" onClick={() => evidence.refetch()}>
+        <RefreshCw size={14} /> Refresh evidence
+      </SecondaryButton>
     </div>
   );
 };

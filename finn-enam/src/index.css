@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Lora:ital,wght@0,400..700;1,400..700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,45 +7,33 @@
     box-sizing: border-box;
   }
   
-  html {
+  /* The window never scrolls: the app frame fills the viewport and its content area scrolls
+     (see .app-frame). This keeps the bottom navigation and header fixed, like a native app. */
+  html,
+  body {
     width: 100%;
-    max-width: 100%;
-    overflow-x: hidden;
+    height: 100%;
+    overflow: hidden;
   }
 
   body {
-    width: 100%;
-    max-width: 100%;
     margin: 0;
     padding: 0;
-    overflow-x: hidden;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #F7F3E8;
-    color: #18342A;
+    background-color: #F7F5ED;
+    color: #203C34;
   }
 
-  /* Forest Green x Warm Cream Light Mode */
-  body {
-    background-color: #F7F3E8;
-    color: #18342A;
-  }
-
-  /* Deep Emerald Midnight Dark Mode */
   .dark body {
-    background-color: #0B1B14;
-    color: #F7F3E8;
+    background-color: #0E1B16;
+    color: #EEF1EA;
   }
 
   #root {
     width: 100%;
-    max-width: 100%;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow-x: hidden;
-    background-color: inherit;
+    height: 100%;
   }
 
   /* Custom subtle scrollbars */
@@ -72,8 +58,121 @@ button, a, input, select {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Modern-phone safe areas (viewport-fit=cover in index.html) */
+.safe-pt { padding-top: env(safe-area-inset-top); }
+.safe-pb { padding-bottom: env(safe-area-inset-bottom); }
+.nav-safe { padding-bottom: max(env(safe-area-inset-bottom), 6px); }
+
+/*
+ * App frame. A phone: the whole screen. Anything wider: a centred, phone-width surface at full
+ * height on a quieter outer background, so FINN reads as an app, never as a stretched website.
+ * `transform` makes the frame the containing block for position: fixed overlays (sheets,
+ * drawers), so they open inside the app instead of across the browser window.
+ */
+.app-stage {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  height: 100dvh;
+  background-color: #ECE8DC;
+}
+.dark .app-stage { background-color: #08120E; }
+.app-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 440px;
+  height: 100dvh;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+@media (min-width: 441px) {
+  .app-frame {
+    border-left: 1px solid #E2DDCF;
+    border-right: 1px solid #E2DDCF;
+    box-shadow: 0 0 0 1px rgba(32, 60, 52, 0.02), 0 24px 64px -24px rgba(32, 60, 52, 0.22);
+  }
+  .dark .app-frame { border-color: #22382F; box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.6); }
+}
+
+.scrollbar-none { scrollbar-width: none; }
+.scrollbar-none::-webkit-scrollbar { display: none; }
+
+/* Screen transitions */
+@keyframes finn-screen-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.screen-enter { animation: finn-screen-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+
+@keyframes finn-sheet-in {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.sheet-enter { animation: finn-sheet-in 240ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-enter, .sheet-enter { animation: none; }
+  * { scroll-behavior: auto !important; }
+}
+
+html { overscroll-behavior-y: none; }
+/* iOS zooms into inputs smaller than 16px on focus (touch devices only). */
+@media (pointer: coarse) { input, select, textarea { font-size: 16px !important; } }
+
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Opaque modal surfaces. Plain CSS (not a Tailwind token) so a dialog can never render
+ * see-through, even if a utility is missing. The dimming/blur lives only on the separate
+ * backdrop element; nothing here inherits opacity from it.
+ */
+.modal-surface { background-color: #FFFEFA; }
+.dark .modal-surface { background-color: #14251E; }
+.modal-surface-subtle { background-color: #FBFAF5; }
+.dark .modal-surface-subtle { background-color: #1A2E26; }
+.modal-backdrop { background-color: rgba(24, 61, 50, 0.32); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.dark .modal-backdrop { background-color: rgba(4, 10, 8, 0.6); }
+
+/* Financial figures: aligned columns and an unambiguous zero. */
+.font-mono {
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
+}
+
+.font-serif {
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+::selection { background: rgba(35, 107, 82, 0.16); }
+
+:focus-visible {
+  outline: 2px solid #397E65;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Interactive surfaces lift slightly on hover (pointer devices only). */
+@media (hover: hover) {
+  .lift { transition: box-shadow 200ms cubic-bezier(0.22, 1, 0.36, 1), transform 200ms cubic-bezier(0.22, 1, 0.36, 1), border-color 200ms; }
+  .lift:hover { box-shadow: 0 2px 4px rgba(32, 60, 52, 0.04), 0 12px 24px -12px rgba(32, 60, 52, 0.14); transform: translateY(-1px); }
+}
+
+/* Chart line draw-in */
+@keyframes finn-draw { from { stroke-dashoffset: var(--len, 2000); } to { stroke-dashoffset: 0; } }
+.draw-in { stroke-dasharray: var(--len, 2000); animation: finn-draw 900ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes finn-pop { 0% { transform: scale(0.6); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+.badge-pop { animation: finn-pop 360ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .draw-in, .badge-pop { animation: none; }
+  .lift:hover { transform: none; }
 }
 
 /* Editorial Serif Accent Classes */

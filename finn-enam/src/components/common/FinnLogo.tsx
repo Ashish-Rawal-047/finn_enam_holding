@@ -51,3 +51,4 @@ export const FinnLogo: React.FC<FinnLogoProps> = ({
 };
 
 export default FinnLogo;
+

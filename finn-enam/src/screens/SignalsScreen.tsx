@@ -1,282 +1,220 @@
-import React, { useState, useMemo } from 'react';
-import { Announcement, TriggeredAlert, AlertSettings } from '../types';
-import { CATEGORY_LABELS } from '../data/alertSettings';
-import { Badge } from '../components/common/Badge';
-import { Search, Sliders, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ArrowUpRight, Search } from 'lucide-react';
+import { useAlertSettings, usePortfolio, useSignals } from '../lib/queries';
+import { inr, relativeTime } from '../lib/format';
+import type { Holding } from '../lib/types';
+import { Sparkline } from '../components/common/Sparkline';
+import { Rise, Stagger } from '../components/motion';
+import { Change, Chips, DemoPill, EmptyState, ErrorState, LoadingBlock, PriorityBadge, ScreenTitle, SecondaryButton, Segmented, Ticker, cx, inputCls } from '../components/ui';
+import { CompanyLogo } from '../components/company/CompanyLogo';
 
-interface SignalsScreenProps {
-  announcements: Announcement[];
-  triggeredAlerts: TriggeredAlert[];
-  settings: AlertSettings;
-  onOpenSettings: () => void;
-  onSelectSignal: (item: Announcement | TriggeredAlert) => void;
+type Filter = 'all' | 'gainers' | 'losers' | 'volume' | 'alerts';
+type View = 'companies' | 'feed';
+
+interface Props {
+  onOpenCompany: (companyId: string) => void;
+  onInspectSignal: (signalId: string) => void;
+  onGoToSettings: () => void;
 }
 
-export const SignalsScreen: React.FC<SignalsScreenProps> = ({
-  announcements,
-  triggeredAlerts,
-  settings,
-  onOpenSettings,
-  onSelectSignal,
-}) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isRoutineOpen, setIsRoutineOpen] = useState(false);
 
-  // Filter announcements according to settings & search
-  const filteredAnnouncements = useMemo(() => {
-    return announcements.filter((ann) => {
-      // Category filter check
-      if (settings.enabledCategories[ann.category] === false) return false;
+export const SignalsScreen: React.FC<Props> = ({ onOpenCompany, onInspectSignal, onGoToSettings }) => {
+  const [view, setView] = useState<View>('companies');
+  const [filter, setFilter] = useState<Filter>('all');
+  const [q, setQ] = useState('');
+  const portfolio = usePortfolio();
+  const alerts = useAlertSettings();
+  const volumeThreshold = alerts.data?.volumeSurgeMultiple ?? 2;
 
-      // Severity check
-      if (settings.minSeverity === 'critical_only' && ann.severity !== 'critical') return false;
-      if (
-        settings.minSeverity === 'high_only' &&
-        ann.severity !== 'critical' &&
-        ann.severity !== 'high'
-      )
-        return false;
+  const counts = useMemo(() => {
+    const items = portfolio.data ?? [];
+    return {
+      all: items.length,
+      gainers: items.filter((h) => (h.quote?.changePercent ?? 0) > 0).length,
+      losers: items.filter((h) => (h.quote?.changePercent ?? 0) < 0).length,
+      volume: items.filter((h) => (h.quote?.volumeRatio ?? 0) >= volumeThreshold).length,
+      alerts: items.filter((h) => h.activeSignalCount > 0).length,
+    };
+  }, [portfolio.data, volumeThreshold]);
 
-      // Search query check
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        return (
-          ann.ticker.toLowerCase().includes(q) ||
-          ann.companyName.toLowerCase().includes(q) ||
-          ann.title.toLowerCase().includes(q) ||
-          ann.oneLineTakeaway.toLowerCase().includes(q)
-        );
-      }
-
-      return true;
-    });
-  }, [announcements, settings, searchQuery]);
-
-  // Combine triggered alerts matching search
-  const filteredAlerts = useMemo(() => {
-    return triggeredAlerts.filter((alert) => {
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        return (
-          alert.ticker.toLowerCase().includes(q) ||
-          alert.companyName.toLowerCase().includes(q) ||
-          alert.headline.toLowerCase().includes(q) ||
-          alert.explanation.toLowerCase().includes(q)
-        );
-      }
-      return true;
-    });
-  }, [triggeredAlerts, searchQuery]);
-
-  // 3-Tier Categorization
-  const needsAttention = useMemo(() => {
-    const criticalAnnouncements = filteredAnnouncements.filter(
-      (a) => a.severity === 'critical' || a.severity === 'high'
-    );
-    const criticalAlerts = filteredAlerts.filter(
-      (a) => a.severity === 'critical' || a.severity === 'high'
-    );
-    return [...criticalAlerts, ...criticalAnnouncements];
-  }, [filteredAnnouncements, filteredAlerts]);
-
-  const worthWatching = useMemo(() => {
-    const mediumAnnouncements = filteredAnnouncements.filter(
-      (a) => a.severity === 'normal' && !a.isRoutine
-    );
-    const mediumAlerts = filteredAlerts.filter((a) => a.severity === 'medium');
-    return [...mediumAlerts, ...mediumAnnouncements];
-  }, [filteredAnnouncements, filteredAlerts]);
-
-  const routineCompliance = useMemo(() => {
-    return filteredAnnouncements.filter(
-      (a) => a.isRoutine || a.severity === 'routine'
-    );
-  }, [filteredAnnouncements]);
-
-  const formatTicker = (ticker: string) => {
-    const parts = ticker.split('.');
-    return (
-      <span className="font-mono text-xs">
-        <span className="font-bold text-ink dark:text-white">{parts[0]}</span>
-        {parts[1] && <span className="text-[10px] text-ink-muted">.{parts[1]}</span>}
-      </span>
-    );
-  };
-
-  const renderSignalRow = (item: Announcement | TriggeredAlert) => {
-    const isAlert = 'triggerMetric' in item;
-    const ticker = item.ticker;
-    const companyName = item.companyName;
-    const headline = isAlert ? item.headline : item.title;
-    const takeaway = isAlert ? item.explanation : item.oneLineTakeaway;
-    const time = item.timestamp;
-    const categoryLabel = !isAlert ? CATEGORY_LABELS[item.category]?.label || item.category : item.triggerMetric;
-
-    return (
-      <div
-        key={item.id}
-        onClick={() => onSelectSignal(item)}
-        className="group relative cursor-pointer p-4 transition-colors hover:bg-cream-light/60 dark:hover:bg-ink-surfaceSubtle/60"
-      >
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-baseline gap-2">
-            {formatTicker(ticker)}
-            <span className="text-xs text-ink-muted truncate max-w-[150px] sm:max-w-[220px]">
-              {companyName}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Badge
-              variant={isAlert ? 'amber' : item.severity === 'critical' ? 'red' : item.severity === 'high' ? 'forest' : 'sage'}
-              size="sm"
-            >
-              {categoryLabel}
-            </Badge>
-            <span className="font-mono text-[10px] text-ink-muted hidden sm:inline">
-              {time}
-            </span>
-          </div>
-        </div>
-
-        <h3 className="mt-1 text-sm font-semibold tracking-tight text-ink dark:text-white line-clamp-1 group-hover:text-forest transition-colors">
-          {headline}
-        </h3>
-
-        <p className="mt-1 text-xs text-ink-muted line-clamp-2 leading-relaxed">
-          {takeaway}
-        </p>
-
-        <div className="mt-2.5 flex items-center justify-between text-[11px]">
-          <span className="font-mono text-[10px] text-ink-muted sm:hidden">
-            {time}
-          </span>
-          <span className="hidden sm:inline" />
-
-          <span className="flex items-center gap-0.5 text-xs font-semibold text-forest dark:text-emerald group-hover:underline">
-            <span>Inspect</span>
-            <ChevronRight size={13} className="transition-transform group-hover:translate-x-0.5" />
-          </span>
-        </div>
-      </div>
-    );
-  };
+  const rows = useMemo(() => {
+    let items = [...(portfolio.data ?? [])];
+    if (filter === 'gainers') items = items.filter((h) => (h.quote?.changePercent ?? 0) > 0).sort((a, b) => b.quote!.changePercent - a.quote!.changePercent);
+    if (filter === 'losers') items = items.filter((h) => (h.quote?.changePercent ?? 0) < 0).sort((a, b) => a.quote!.changePercent - b.quote!.changePercent);
+    if (filter === 'volume') items = items.filter((h) => (h.quote?.volumeRatio ?? 0) >= volumeThreshold).sort((a, b) => (b.quote!.volumeRatio ?? 0) - (a.quote!.volumeRatio ?? 0));
+    if (filter === 'alerts') items = items.filter((h) => h.activeSignalCount > 0).sort((a, b) => b.activeSignalCount - a.activeSignalCount);
+    const term = q.trim().toLowerCase();
+    if (term) items = items.filter((h) => h.name.toLowerCase().includes(term) || (h.nseSymbol ?? '').toLowerCase().includes(term));
+    return items;
+  }, [portfolio.data, filter, q, volumeThreshold]);
 
   return (
-    <div className="space-y-6 pb-24 pt-2">
-      {/* Search & Threshold Filter Row */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
-          <input
-            type="text"
-            placeholder="Search signals, tickers, catalysts..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface py-2.5 pl-9 pr-3 text-xs text-ink dark:text-white placeholder:text-ink-muted focus:border-forest focus:outline-none focus:ring-1 focus:ring-forest shadow-subtle"
+    <div className="space-y-5 pt-5">
+      <ScreenTitle title="Signals" lede="Price, volume against the 20-session norm, and raised signals." />
+      <Segmented<View>
+        ariaLabel="Signals view"
+        value={view}
+        onChange={setView}
+        options={[
+          { id: 'companies', label: 'Companies' },
+          { id: 'feed', label: 'Signal feed' },
+        ]}
+      />
+
+      {view === 'companies' ? (
+        <div className="space-y-4">
+          <div className="relative">
+            <Search size={16} strokeWidth={1.75} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
+            <input className={cx(inputCls, 'pl-10')} placeholder="Filter by name or symbol" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Filter tracked companies" />
+          </div>
+          <Chips<Filter>
+            ariaLabel="Company filter"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { id: 'all', label: 'All', count: counts.all },
+              { id: 'gainers', label: 'Gainers', count: counts.gainers },
+              { id: 'losers', label: 'Losers', count: counts.losers },
+              { id: 'volume', label: `Volume ≥ ${volumeThreshold}×`, count: counts.volume },
+              { id: 'alerts', label: 'With alerts', count: counts.alerts },
+            ]}
           />
-        </div>
-
-        <button
-          onClick={onOpenSettings}
-          className="flex h-10 items-center gap-1.5 rounded-xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface px-3 text-xs font-medium text-ink hover:bg-cream-light dark:hover:bg-ink-surfaceSubtle shadow-subtle transition-colors"
-        >
-          <Sliders size={14} className="text-forest" />
-          <span className="hidden sm:inline">Thresholds</span>
-        </button>
-      </div>
-
-      {/* Scope / Context Pill */}
-      <div className="text-[11px] text-ink-muted">
-        Window: <span className="font-bold text-ink dark:text-white">{settings.activeDigestWindow.toUpperCase()}</span> • Monitored Universe: <span className="font-bold text-ink dark:text-white">18 Equities</span>
-      </div>
-
-      {/* TIER 1: NEEDS ATTENTION */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-fin-red" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
-              Needs Attention
-            </h2>
-            <Badge variant="red" size="sm">
-              {needsAttention.length}
-            </Badge>
-          </div>
-          <span className="text-[10px] text-ink-muted">Immediate review</span>
-        </div>
-
-        <div className="rounded-2xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface overflow-hidden shadow-subtle divide-y divide-divider/70 dark:divide-ink-border">
-          {needsAttention.length === 0 ? (
-            <div className="p-5 text-center text-xs text-ink-muted">
-              No critical alerts or material guidance breaches.
-            </div>
+          {portfolio.isLoading ? (
+            <LoadingBlock rows={6} />
+          ) : portfolio.isError ? (
+            <ErrorState error={portfolio.error} onRetry={() => portfolio.refetch()} />
+          ) : (portfolio.data ?? []).length === 0 ? (
+            <EmptyState title="No tracked companies" body="Add companies to your portfolio to monitor them here." action={<SecondaryButton onClick={onGoToSettings}>Manage portfolio</SecondaryButton>} />
+          ) : rows.length === 0 ? (
+            <EmptyState title="No companies match this filter" />
           ) : (
-            needsAttention.map((item) => renderSignalRow(item))
+            <div className="overflow-hidden rounded-card border border-divider bg-paper dark:border-ink-border dark:bg-ink-surface">
+              <Stagger as="ul" className="divide-y divide-divider dark:divide-ink-border">
+                {rows.map((h) => (
+                  <Rise as="li" key={h.id}>
+                    <CompanyRow h={h} volumeThreshold={volumeThreshold} onClick={() => onOpenCompany(h.id)} />
+                  </Rise>
+                ))}
+              </Stagger>
+            </div>
+          )}
+          {portfolio.data?.some((h) => h.quote?.isDemo) && (
+            <p className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-muted">
+              <DemoPill /> Prices are a synthetic demonstration series, not live NSE quotes.
+            </p>
           )}
         </div>
-      </section>
-
-      {/* TIER 2: WORTH WATCHING */}
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-fin-amber" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-ink dark:text-white">
-              Worth Watching
-            </h2>
-            <Badge variant="sage" size="sm">
-              {worthWatching.length}
-            </Badge>
-          </div>
-          <span className="text-[10px] text-ink-muted">Operational catalysts</span>
-        </div>
-
-        <div className="rounded-2xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface overflow-hidden shadow-subtle divide-y divide-divider/70 dark:divide-ink-border">
-          {worthWatching.length === 0 ? (
-            <div className="p-5 text-center text-xs text-ink-muted">
-              No medium-priority operational updates matching criteria.
-            </div>
-          ) : (
-            worthWatching.map((item) => renderSignalRow(item))
-          )}
-        </div>
-      </section>
-
-      {/* TIER 3: ROUTINE COMPLIANCE (COLLAPSIBLE DRAWER) */}
-      <section className="space-y-2">
-        <div
-          onClick={() => setIsRoutineOpen(!isRoutineOpen)}
-          className="flex cursor-pointer items-center justify-between rounded-xl border border-divider bg-white dark:bg-ink-surface px-4 py-3 text-xs shadow-subtle hover:bg-cream-light/60 transition-colors"
-        >
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-ink-muted" />
-            <span className="font-semibold text-ink dark:text-white">
-              Routine Compliance ({routineCompliance.length})
-            </span>
-            <span className="text-[10px] text-ink-muted">
-              Secretarial filings stowed away
-            </span>
-          </div>
-
-          <button className="flex items-center gap-1 text-xs font-semibold text-forest dark:text-emerald">
-            <span>{isRoutineOpen ? 'Collapse' : 'Expand'}</span>
-            {isRoutineOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
-        </div>
-
-        {isRoutineOpen && (
-          <div className="rounded-2xl border border-divider dark:border-ink-border bg-white dark:bg-ink-surface overflow-hidden shadow-subtle divide-y divide-divider/70 dark:divide-ink-border">
-            {routineCompliance.length === 0 ? (
-              <div className="p-5 text-center text-xs text-ink-muted">
-                No routine administrative disclosures in this cycle.
-              </div>
-            ) : (
-              routineCompliance.map((item) => renderSignalRow(item))
-            )}
-          </div>
-        )}
-      </section>
+      ) : (
+        <SignalFeed onInspectSignal={onInspectSignal} />
+      )}
     </div>
   );
 };
+
+/**
+ * One tracked company as a phone list row: logo, ticker and name, volume against its 20-session
+ * norm (amber at or above the user's surge threshold), a 30-session sparkline, then price and move.
+ */
+const CompanyRow: React.FC<{ h: Holding; volumeThreshold: number; onClick: () => void }> = ({ h, volumeThreshold, onClick }) => {
+  const q = h.quote;
+  const ratio = q?.volumeRatio ?? null;
+  const hot = ratio !== null && ratio >= volumeThreshold;
+  return (
+    <button onClick={onClick} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-cream-light dark:hover:bg-ink-surfaceSubtle">
+      <CompanyLogo {...h} size="sm" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <Ticker symbol={h.nseSymbol} />
+          {h.activeSignalCount > 0 && (
+            <span className="inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-forest px-1 font-mono text-[9px] font-semibold text-white dark:bg-emerald dark:text-ink-bg" title={`${h.activeSignalCount} unread signal(s)`}>
+              {h.activeSignalCount}
+            </span>
+          )}
+        </div>
+        <div className="truncate text-[11.5px] text-ink-muted">{h.name}</div>
+        <div className={cx('mt-0.5 font-mono text-[10.5px]', hot ? 'font-medium text-fin-amber' : 'text-ink-subtle')} title={`Your surge threshold: ${volumeThreshold}×`}>
+          Vol {ratio !== null ? `${ratio.toFixed(2)}×` : '—'} 20D avg{hot && <span className="sr-only"> (above your threshold)</span>}
+        </div>
+      </div>
+      <div className="shrink-0 text-ink-muted">{q && q.sparkline.length > 1 ? <Sparkline data={q.sparkline} width={56} height={24} positive={q.sparkline[q.sparkline.length - 1] >= q.sparkline[0]} /> : null}</div>
+      <div className="w-[78px] shrink-0 text-right">
+        <div className="font-mono text-[13px] font-medium text-ink dark:text-white">{q ? inr(q.lastPrice) : '—'}</div>
+        <Change value={q?.changePercent} className="text-[11px]" />
+      </div>
+    </button>
+  );
+};
+
+const SignalFeed: React.FC<{ onInspectSignal: (id: string) => void }> = ({ onInspectSignal }) => {
+  const [page, setPage] = useState(1);
+  const [type, setType] = useState<string>('all');
+  const signals = useSignals(page, type === 'all' ? undefined : type);
+  return (
+    <div className="space-y-4">
+      <Chips
+        ariaLabel="Signal type"
+        value={type}
+        onChange={(t) => {
+          setType(t);
+          setPage(1);
+        }}
+        options={[
+          { id: 'all', label: 'All' },
+          { id: 'price_move', label: 'Price' },
+          { id: 'volume_spike', label: 'Volume' },
+          { id: 'management_change', label: 'Management' },
+          { id: 'financial_result', label: 'Results' },
+          { id: 'corporate_announcement', label: 'Announcements' },
+          { id: 'historical_precedent', label: 'Precedents' },
+        ]}
+      />
+      <p className="text-[11.5px] text-ink-muted">Only signals that pass your alert thresholds are shown. Select one to inspect its evidence.</p>
+      {signals.isLoading ? (
+        <LoadingBlock rows={5} />
+      ) : signals.isError ? (
+        <ErrorState error={signals.error} onRetry={() => signals.refetch()} />
+      ) : !signals.data || signals.data.items.length === 0 ? (
+        <EmptyState title="No signals" body="Nothing in your portfolio crosses your thresholds for this filter." />
+      ) : (
+        <>
+          <Stagger as="ul" className="divide-y divide-divider overflow-hidden rounded-card border border-divider bg-paper dark:divide-ink-border dark:border-ink-border dark:bg-ink-surface">
+            {signals.data.items.map((s) => (
+              <Rise as="li" key={s.id}>
+                <button onClick={() => onInspectSignal(s.id)} className="group grid w-full grid-cols-[1fr_auto] gap-x-4 gap-y-1 px-4 py-3.5 text-left transition-colors hover:bg-cream-light dark:hover:bg-ink-surfaceSubtle">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {s.company && <CompanyLogo {...s.company} size="xs" />}
+                    <Ticker symbol={s.company?.nseSymbol} />
+                    <span className="truncate text-[11.5px] text-ink-muted">{s.categoryLabel}</span>
+                  </div>
+                  <PriorityBadge priority={s.priority} />
+                  <div className="text-[13.5px] font-medium leading-snug text-ink dark:text-white">{s.title}</div>
+                  <ArrowUpRight size={15} strokeWidth={1.75} className="self-center justify-self-end text-ink-subtle transition-transform group-hover:-translate-y-px group-hover:translate-x-px" />
+                  <div className="flex items-center gap-2 font-mono text-[10.5px] text-ink-subtle">
+                    {relativeTime(s.occurredAt)}
+                    {s.isDemo && <DemoPill />}
+                  </div>
+                </button>
+              </Rise>
+            ))}
+          </Stagger>
+          <Pager page={page} totalPages={signals.data.pagination.totalPages} onPage={setPage} />
+        </>
+      )}
+    </div>
+  );
+};
+
+export const Pager: React.FC<{ page: number; totalPages: number; onPage: (p: number) => void }> = ({ page, totalPages, onPage }) =>
+  totalPages <= 1 ? null : (
+    <div className="flex items-center justify-between">
+      <SecondaryButton disabled={page <= 1} onClick={() => onPage(page - 1)}>
+        Previous
+      </SecondaryButton>
+      <span className="font-mono text-xs text-ink-muted">
+        {page} / {totalPages}
+      </span>
+      <SecondaryButton disabled={page >= totalPages} onClick={() => onPage(page + 1)}>
+        Next
+      </SecondaryButton>
+    </div>
+  );

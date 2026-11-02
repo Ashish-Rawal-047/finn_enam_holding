@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface DrawerProps {
@@ -6,94 +7,62 @@ interface DrawerProps {
   onClose: () => void;
   title: string;
   subtitle?: string;
+  /** Shown before the title, e.g. a company logo. */
+  leading?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
-export const Drawer: React.FC<DrawerProps> = ({
-  isOpen,
-  onClose,
-  title,
-  subtitle,
-  children,
-  footer,
-  maxWidth = 'md',
-}) => {
+/**
+ * Bottom sheet over the current screen, inside the app frame (portalled into #app-overlays).
+ * The dimmed, blurred backdrop and the opaque panel are siblings, so the panel never
+ * inherits the backdrop's opacity or blur.
+ */
+export const Drawer: React.FC<DrawerProps> = ({ isOpen, onClose, title, subtitle, leading, children, footer }) => {
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const widthClasses = {
-    sm: 'sm:max-w-md',
-    md: 'sm:max-w-lg',
-    lg: 'sm:max-w-xl',
-    xl: 'sm:max-w-2xl',
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end sm:items-center sm:justify-center p-0 sm:p-4">
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-ink-dark/50 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-
-      {/* Drawer Container */}
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex flex-col justify-end">
+      <div className="modal-backdrop absolute inset-0" onClick={onClose} aria-hidden="true" />
       <div
         role="dialog"
         aria-modal="true"
-        className={`relative z-10 flex max-h-[92vh] sm:max-h-[88vh] w-full ${widthClasses[maxWidth]} flex-col rounded-t-3xl sm:rounded-2xl bg-white dark:bg-ink-surface border-t sm:border border-divider dark:border-ink-border shadow-float overflow-hidden transition-all`}
+        aria-label={title}
+        className="modal-surface sheet-enter relative flex max-h-[92%] w-full flex-col overflow-hidden rounded-t-[20px] border-t border-divider shadow-sheet dark:border-ink-border"
       >
-        {/* Mobile Drag Indicator */}
-        <div className="flex justify-center pt-3 pb-1 sm:hidden">
+        <div className="modal-surface flex justify-center pt-3 pb-1">
           <div className="h-1.5 w-10 rounded-full bg-sage-dark dark:bg-ink-border" />
         </div>
 
-        {/* Header */}
-        <div className="flex items-start justify-between border-b border-divider dark:border-ink-border px-5 py-4">
-          <div className="pr-3">
-            <h3 className="text-base font-bold text-ink dark:text-white tracking-tight">
-              {title}
-            </h3>
-            {subtitle && (
-              <p className="text-xs text-ink-muted mt-0.5">
-                {subtitle}
-              </p>
-            )}
+        <header className="modal-surface flex items-start justify-between gap-3 border-b border-divider px-5 py-3 dark:border-ink-border">
+          <div className="flex min-w-0 items-center gap-3 pt-1">
+            {leading}
+            <div className="min-w-0">
+              <h3 className="font-serif text-[22px] leading-tight text-forest-dark dark:text-white">{title}</h3>
+              {subtitle && <p className="mt-0.5 text-xs text-ink-muted">{subtitle}</p>}
+            </div>
           </div>
-
           <button
             onClick={onClose}
-            className="rounded-full p-1.5 bg-sage text-forest hover:bg-forest hover:text-white transition-colors"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-cream-dark hover:text-ink dark:hover:bg-ink-surfaceSubtle dark:hover:text-white"
             aria-label="Close dialog"
           >
-            <X size={15} />
+            <X size={16} />
           </button>
-        </div>
+        </header>
 
-        {/* Scrollable Content Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 scrollbar-thin">
-          {children}
-        </div>
+        <div className={`modal-surface flex-1 overflow-y-auto overscroll-contain px-5 py-4 ${footer ? '' : 'safe-pb'}`}>{children}</div>
 
-        {/* Optional Footer */}
-        {footer && (
-          <div className="border-t border-divider dark:border-ink-border bg-cream-light/60 dark:bg-ink-surfaceSubtle px-5 py-3">
-            {footer}
-          </div>
-        )}
+        {footer && <footer className="modal-surface-subtle border-t border-divider px-5 py-3 safe-pb dark:border-ink-border">{footer}</footer>}
       </div>
-    </div>
+    </div>,
+    document.getElementById('app-overlays') ?? document.body,
   );
 };

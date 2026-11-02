@@ -1,254 +1,134 @@
-# FINN: System Architecture & Data Flow Specification
-**ENAM Holdings — AI Engineer Build Challenge**
-*Document Version: 1.0.0 | System Date: October 29, 2026*
+# FINN — Architecture
 
----
+FINN is a mobile-first investment-intelligence app for ENAM Holdings: portfolio monitoring with materiality-ranked alerts, structured company research, and **Event Memory**, a persistent record of corporate commitments and how they were executed.
 
-## 1. System Overview & Architecture Diagram
+## Layout
 
-FINN is engineered as an institutional-grade, mobile-first intelligence platform for public-market equity investors. It bridges raw exchange disclosures, market movements, and primary corporate disclosures with a high-conviction visual interface.
+```
+finn-enam/
+├── neon.ts                 Neon services: Lakebase Postgres, AI Gateway, Realtime
+├── src/                    Frontend (React 18 + Vite + TypeScript + Tailwind + Lucide)
+│   ├── lib/api.ts          Central API client: in-memory access token, refresh, retry
+│   ├── lib/queries.ts      TanStack Query hooks (cache, invalidation, pagination)
+│   ├── lib/live.tsx        Neon Realtime live notifications (polling fallback)
+│   ├── screens/            Home · Signals · Research · Event Memory · Settings · Auth
+│   └── components/         App shell (header, scrolling content, 5-tab bottom nav), charts, sheets
+├── backend/                API (Node + Express 5 + TypeScript + Drizzle ORM)
+│   ├── src/config/env.ts   Startup env validation (zod); secrets never logged
+│   ├── src/db/             Schema, migrations runner, demo seed
+│   ├── drizzle/            SQL migrations (pgvector + 25 tables)
+│   ├── src/routes/         REST endpoints
+│   ├── src/services/       Alert engine, Event Memory, research, ingestion, auth
+│   ├── src/providers/      Provider-independent data adapters (demo today)
+│   ├── src/ai/             AI service layer over the Neon AI Gateway
+│   ├── src/realtime/       Sealed live queries for notifications
+│   └── src/jobs/           Scheduled ingestion (node-cron) + CLI
+└── scripts/ui-audit.mjs    Responsive audit via Chrome DevTools Protocol
+```
 
-The architecture comprises five distinct layers:
-1. **Primary Data Ingestion Layer:** Aggregates exchange filings, EOD market series, and primary documents (Annual Reports, concall transcripts).
-2. **AI Extraction & Smart Model Router:** A cost-efficient, tiered pipeline combining rule heuristics, fast extraction models, and reasoning engines.
-3. **Event Memory Subsystem:** A commitment tracking ledger that monitors corporate promises over multi-quarter horizons.
-4. **Local Data & State Store:** High-speed embedded storage with offline fixture resilience.
-5. **Mobile-First Client Presentation Layer:** An institutional, high-density touch interface.
+## Frontend shell
+
+FINN is a phone app at every viewport (`src/components/layout/AppShell.tsx`):
+
+* A phone: the app fills the screen (`100dvh`, safe-area padding). Anything wider: the same app in a centred, phone-width frame (440 px) at full height on a quieter outer background. There is no sidebar and no desktop layout.
+* The frame stacks the header, an independently scrolling content area (`#app-scroll`) and the bottom navigation in one column, so content can never sit under the navigation and the window itself never scrolls.
+* The frame is the containing block for overlays: full-screen detail pages and bottom-sheet drawers open inside it (drawers portal into `#app-overlays`).
+* Tailwind's window-width breakpoints (`sm`/`md`/`lg`/`xl`) are removed, because inside a phone-width frame they would switch on desktop layouts; only `xs` (375 px) remains for very narrow phones.
+
+## Runtime
 
 ```mermaid
-flowchart TD
-    subgraph Sources["1. Primary Data Sources"]
-        NSE["NSE / BSE Announcements & Filings"]
-        YF["EOD Price & Traded Volume (yfinance)"]
-        AR["Annual Reports & Concall Transcripts"]
-    end
-
-    subgraph Ingestion["2. Ingestion & Transformation Layer"]
-        P_Ingest["Price & Volume Service (20-DMA)"]
-        A_Ingest["Announcement Classifier (17 Categories)"]
-        F_Ingest["Primary Doc Chunking & Table Parser"]
-    end
-
-    subgraph Processing["3. AI Extraction & Smart Model Routing"]
-        T0["Tier 0: Regex / Deterministic Filter"]
-        T1["Tier 1: Fast Flash Model (Extraction / Bios / 1-Liners)"]
-        T2["Tier 2: Reasoning Model (Narrative vs Numbers / Bull-Bear)"]
-        Cache["Token & Context Cache"]
-    end
-
-    subgraph MemoryEngine["4. Event Memory Engine (Signature Feature)"]
-        Ledger["Commitment Ledger (Guidance, Capex, Margins)"]
-        Matcher["Outcome Cross-Referencing & Status Resolver"]
-        CredScore["Management Credibility & Track Record"]
-    end
-
-    subgraph Storage["5. Persistence & Fixture Store"]
-        DB[("Embedded SQLite / Fast JSON Store")]
-        Fixtures[("Deterministic Offline Fixtures (18+4 Companies)")]
-    end
-
-    subgraph Client["6. Mobile-First Presentation (React + TypeScript)"]
-        PushFeed["Push: Windowed Digest & Anomaly Alerts"]
-        PullResearch["Pull: 6-Pillar Fundamental Research"]
-        EventTimeline["Event Memory: Commitment vs. Reality UI"]
-        Config["User Thresholds & Window Settings"]
-    end
-
-    Sources --> Ingestion
-    Ingestion --> Processing
-    Processing <--> Cache
-    Processing --> MemoryEngine
-    MemoryEngine --> Storage
-    Processing --> Storage
-    Fixtures -.-> Storage
-    Storage --> Client
-    Config -.-> Ingestion
+flowchart LR
+  subgraph Browser
+    UI[React app] -->|REST /api, Bearer access token| API
+    UI -->|WebSocket, sealed query| RT[(Neon Realtime)]
+  end
+  subgraph Server[Express API]
+    API --> Services
+    Jobs[node-cron jobs] --> Services
+    Services --> Providers[Data provider adapters]
+    Services --> AI[AI service layer]
+  end
+  Services -->|node-postgres pool, pooled URL| PG[(Lakebase Postgres on Neon + pgvector)]
+  AI --> GW[Neon AI Gateway]
+  RT --- PG
 ```
 
----
+* **Database driver.** The API is a long-running process, so it holds one `node-postgres` pool on Neon's pooled (`-pooler`) URL. Migrations use the direct URL (`DATABASE_URL_UNPOOLED`), following Neon guidance.
+* **Auth.** Passwords are hashed with Argon2id. Access JWTs last 15 minutes and live in memory only. Refresh tokens are JWTs in an `httpOnly`, `SameSite=Strict` cookie scoped to `/api/auth`, rotated on every use. Only their SHA-256 hash is stored (`auth_sessions`). Replaying a superseded refresh token revokes the session.
+* **Same origin.** In development Vite proxies `/api` to `:3001`. In production the API serves the built frontend, so cookies stay `SameSite=Strict`.
 
-## 2. End-to-End Data Pipeline & Ingestion Flows
+## Data integrity rules
 
-### 2.1 Corporate Announcements (Push Stream)
-1. **Fetch & Normalization:** Ingest raw exchange announcements across the 18 portfolio stocks. Standardize fields into `ticker`, `timestamp`, `title`, `category`, and `pdf_url`.
-2. **Category Classification:** Map each filing to the 17 taxonomy categories defined in the reference guide:
-   - High Signal: `results`, `M&A`, `management_change`, `capex`, `litigation`, `fund_raise`, `credit_rating`, `dividend`.
-   - Moderate Signal: `insider_trading`, `earnings_call`, `investor_meetings`, `bonus_split`, `buyback`.
-   - Routine/Collapsible: `unclassified`, `postal_ballot`, `agm_egm`, `pleading`, routine compliance certificates.
-3. **Presentation Enrichment:**
-   - For `management_change`: Trigger executive bio synthesis (name, past appointments, background pedigree).
-   - For `results`: Ingest tabular financials and compute Revenue, EBITDA, PBT, PAT with QoQ and YoY deltas.
-   - For `capex` / `M&A`: Generate a crisp, objective 1-line impact statement.
+1. **Demo is never presented as live.** Every fact table has `is_demo`, and the UI shows a "Demo data" pill wherever demo rows appear. The demo price series is synthetic and labelled as such.
+2. **No invented sources.** Fixture "exchange PDF" URLs did not exist, so demo documents are stored with `url = NULL` and a demonstration notice. Fixture quotations attributed to named executives are shown as un-quoted demo text.
+3. **Three kinds of claims.** Research claims are typed `reported_fact`, `calculated_metric` (with its formula), `ai_interpretation`, or `analyst_note` (hand-written demo narrative). Sections without support return `unavailable` with a reason.
+4. **Evidence-gated outcomes.** An event cannot be marked completed, delayed or abandoned without a source document and an evidence excerpt. Completion also needs an actual date.
 
-### 2.2 End-of-Day Price & Volume Anomaly Engine
-1. **Daily Feed:** Ingest daily closing price ($P_t$) and traded volume ($V_t$) via `yfinance` (`.NS` / `.BO` tickers).
-2. **Moving Baseline:** Maintain a rolling 20-day simple moving average of volume:
-   $$\text{SMA}_{20}(V) = \frac{1}{20} \sum_{i=1}^{20} V_{t-i}$$
-3. **Threshold Breaches:**
-   - Price Anomaly: $|\Delta P\%| \ge X\%$, where $\Delta P\% = \frac{P_t - P_{t-1}}{P_{t-1}} \times 100$.
-   - Volume Anomaly: $\text{Ratio} = \frac{V_t}{\text{SMA}_{20}(V)} \ge Y\times$.
-4. **Dynamic User Tuning:** Sliders on the frontend adjust $X$ and $Y$ in real time without backend re-querying.
+## Alert engine
 
-### 2.3 Primary Fundamentals (Pull Stream)
-1. **Source Rigor:** Ingestion is strictly limited to primary documents: Annual Reports, investor presentations, quarterly filings, and concall transcripts (accessible via exchange filings or screener.in primary document repositories).
-2. **No Secondary Commentary:** Broker reports, speculative news articles, and ungrounded LLM pretraining hallucinations are strictly filtered out.
-3. **Chunking & Page Anchoring:** Large documents are parsed into semantically coherent sections (Management Discussion & Analysis, Auditor Notes, Segment Reporting, Q&A session transcripts) with explicit page/paragraph citations.
+* **Signals** are global facts, one per underlying event, enforced by a unique `dedup_key` such as `price_move:{company}:{date}`, `management_change:{company}:{person}:{role}:{type}`, `financial_result:{company}:{period}`, `announcement:{hash}` or `historical_precedent:{event}:{prior}`. Re-ingesting the same filing or session never creates a second signal.
+* Market signals are recorded above a floor (±1% / 1.5×). **User thresholds are applied when notifying.** Notifications are per user, only for companies the user tracks, with `unique(user_id, signal_id)`.
+* **Priority:**
+  * For price and volume, priority is relative to the user's own threshold: 1× medium, 2× high, 3× critical.
+  * For filings, priority comes from a 0–100 materiality score. The score starts from the category's weight and is adjusted for:
+    * seniority of the management role
+    * the disclosed ₹ amount
+    * year-on-year change in results
+    * negative keywords
+  * Home ranks unread alerts by priority, then materiality, then recency.
+* **Changing alert settings** (`PATCH /api/settings/alerts`) immediately re-runs fan-out for that user over the last seven days of signals.
 
----
+## Event Memory
 
-## 3. Tiered AI Model Routing & Cost Efficiency
+* **Sources.** Events come from three paths:
+  * announcement ingestion: a deterministic tier-0 extractor, plus AI tier-1 when configured; AI-supplied numbers and dates are kept only if they appear in the source text
+  * manual entry
+  * demo fixtures
+* **Lifecycle:** `announced → initiated → in_progress → on_track | delayed → completed | abandoned`, or `outcome_unverified`.
+* **Milestones.** Each one stores a date, the resulting status, a description, and its source document or evidence excerpt.
+* **Execution records** compute planned vs actual duration, delay in days, capex and capacity variance, and guidance accuracy (`accurate`, `minor_slip`, `major_slip` or `missed`). Per-company reliability rolls these up.
+* **Similar-event matching** (`services/similarity.ts`, unit-tested):
+  * Structured score:
+    * same company: 0.30
+    * same category: 0.25
+    * same project type: 0.15
+    * wording overlap: 0.15
+    * capex scale: 0.10
+    * same capacity unit: 0.05
+  * When both events have embeddings, the semantic score is pgvector cosine similarity (Qwen3 embeddings via the AI Gateway). Combined score = 0.65 × structured + 0.35 × semantic.
+  * A candidate must share the company or the category, so embeddings alone never create a match. The threshold is 0.45.
+  * When the best match has a known outcome, FINN raises a **"Historical precedent detected"** signal whose explanation is computed from the execution record, for example: *"This company previously announced a similar manufacturing facility in 2023 … expected to complete in 14 months but is running approximately 3 months late."*
 
-To satisfy the brief's emphasis on efficiency and smart model routing, FINN routes every task to the lowest-cost tier capable of solving it:
+## Data providers
 
-```
-                    ┌────────────────────────────┐
-                    │     Incoming Raw Task      │
-                    └─────────────┬──────────────┘
-                                  │
-                 Is it structural/numerical?
-                                  │
-                  ┌───────────────┴───────────────┐
-                 YES                              NO
-                  │                               │
-        ┌───────────────────┐           Is it high-throughput
-        │      Tier 0       │           extraction or summary?
-        │ Deterministic/    │                     │
-        │ Regex Parsing     │           ┌─────────┴─────────┐
-        └───────────────────┘          YES                  NO
-                                        │                   │
-                              ┌───────────────────┐ ┌───────────────────┐
-                              │      Tier 1       │ │      Tier 2       │
-                              │ Gemini 1.5/2.5    │ │ Advanced Reasoning│
-                              │ Flash (<0.5s)     │ │ Model (Deep       │
-                              │ Bio / 1-Liners /  │ │ Synthesis /       │
-                              │ Table Extraction  │ │ Narrative vs Num) │
-                              └───────────────────┘ └───────────────────┘
-```
+`backend/src/providers/types.ts` defines provider-independent contracts for company info, daily market data, announcements, financial statements and transcripts. `registry.ts` selects an adapter per capability from the environment. Today only `demo` ships. A configured but unimplemented name resolves to an adapter that fails loudly, never to fake data.
 
-- **Tier 0 (Algorithmic / Regex):** Computes financial growth rates ($\text{YoY}\%$, $\text{QoQ}\%$), volume ratios, filing date checks, and keyword-based category pre-filtering. Cost: **$0.00**.
-- **Tier 1 (Fast Flash Model):** Extracts key personnel bios, produces one-sentence summaries of lengthy corporate filings, and parses unstructured PDF tables into clean JSON. Cost: **Negligible (~$0.0001 per filing)**.
-- **Tier 2 (High-Reasoning Model):** Performs complex comparative synthesis: assessing management's stated narrative vs. audited numbers across 4 quarters, and extracting the Bull vs. Bear debate. Invoked selectively on on-demand user drill-downs.
+Adding a licensed NSE/BSE vendor means writing an adapter against its documented API, after reviewing:
 
----
+* endpoints
+* rate limits
+* NSE and BSE coverage
+* history depth
+* licensing
 
-## 4. The Event Memory Subsystem (Signature Innovation)
+Then register it. No scraping.
 
-Public-market investors constantly struggle to hold corporate managements accountable. An executive may announce an ambitious ₹1,000 Cr capex program or promise 20% margin expansion, only for investors to forget the commitment two quarters later when results disappoint.
+## AI service layer
 
-**FINN's Event Memory solves this institutional blind spot:**
+`backend/src/ai/gateway.ts` uses `@neon/ai-sdk-provider` with AI SDK v6 `generateText({ output: Output.object(schema) })`. Every call:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Man as Company Disclosures / Concall
-    participant Ingest as FINN Ingestion Pipeline
-    participant Ledger as Event Memory Ledger
-    participant Pull as Pull Research / Push Feed
-    participant User as Investor (UI)
+* receives a numbered evidence pack (E1…En)
+* must return zod-validated JSON
+* has each claim's citations checked: claims citing unknown ids are discarded
 
-    Man->>Ingest: Q2 FY24 Concall: "Targeting 18% EBITDA margin by Q4 FY25"
-    Ingest->>Ledger: Store Commitment: [Metric: EBITDA Margin >= 18%, Target: Q4 FY25]
-    Note over Ledger: Time Passes: 4 Quarters
-    Man->>Ingest: Q4 FY25 Results: Actual EBITDA Margin is 15.4%
-    Ingest->>Ledger: Query Historical Commitments for Company
-    Ledger-->>Ingest: Match Found: Target 18% vs Actual 15.4% (Variance: -260 bps)
-    Ingest->>Pull: Flag Status: "MISSED" with Source Transcript Quote
-    Pull->>User: Display Event Memory Alert: Broken Guidance Detected
-```
+There are two tiers: a fast chat model for extraction and a reasoning model for multi-section research. Without the gateway, AI features report "not configured" rather than producing content.
 
-### Event Memory Data Schema:
-```typescript
-interface CorporateCommitment {
-  id: string;
-  ticker: string;
-  companyName: string;
-  category: 'capex' | 'margin' | 'debt_reduction' | 'revenue_target' | 'capacity_addition' | 'product_launch';
-  originalDate: string;
-  sourceDocType: 'concall_transcript' | 'annual_report' | 'exchange_filing';
-  sourceDocTitle: string;
-  sourceQuote: string;           // Exact verbatim quote from management
-  targetMetric: string;          // e.g., "EBITDA Margin >= 18%", "₹500 Cr Capex"
-  targetTimeline: string;        // e.g., "Q4 FY25", "H1 FY26"
-  status: 'pending' | 'delivered' | 'delayed' | 'missed' | 'exceeded';
-  verificationDate?: string;
-  outcomeEvidence?: string;      // Audited number or subsequent disclosure text
-  varianceExplanation?: string;  // Management's stated reason for variance
-}
-```
+## Background jobs
 
----
+| Job | Schedule (IST) | Steps |
+| --- | --- | --- |
+| `market` | 16:45 and 08:30, weekdays | candles → 20-session volume stats → latest quote → price/volume signals → notifications |
+| `announcements` | every 30 min, 08:00–22:00 | fetch → classify → dedupe → source docs → results / management changes → signals → event extraction → similarity → precedent alerts → notifications |
 
-## 5. Database Schema & Storage Architecture
-
-FINN uses an embedded, zero-maintenance local database (SQLite/JSON store) optimized for speed and deterministic offline execution.
-
-### Entities:
-1. `companies`: Ticker, full name, sector, market cap tier, description, IR website, screener URL.
-2. `eod_metrics`: Ticker, date, close price, previous close, volume, 20-DMA volume, price change $\%$, volume ratio.
-3. `announcements`: Announcement ID, ticker, timestamp, title, category, priority score, summary, source URL, raw filing details.
-4. `financial_snapshots`: Ticker, fiscal quarter, revenue, EBITDA, PBT, PAT, EBITDA margin, ROCE, ROE, D/E ratio, working capital days.
-5. `commitments`: Event Memory records matching historical guidance with observed outcomes.
-6. `user_preferences`: Configured price threshold ($X\%$), volume threshold ($Y\times$), active time window (24h/48h/7d).
-
----
-
-## 6. Frontend Client Architecture & Mobile UX
-
-The client is built mobile-first using React, Vite, Tailwind CSS, and Lucide icons.
-
-```
-┌────────────────────────────────────────────────────────┐
-│                   App Navigation Bar                   │
-│   [FINN // Institutional Terminal]   [Time: Last 24h]  │
-├────────────────────────────────────────────────────────┤
-│                   Main Content View                    │
-│                                                        │
-│  Tab 1: PUSH FEED                                      │
-│    ├── Anomaly Alert Banners (Price/Volume triggers)   │
-│    ├── Windowed Digest Cards (17-category badges)      │
-│    └── Collapsed Routine Filings Drawer                │
-│                                                        │
-│  Tab 2: PULL RESEARCH                                  │
-│    ├── Ticker Search & Sector Filter                   │
-│    ├── KPI Snapshot Grid (Rev, Margins, D/E, ROCE)     │
-│    ├── Narrative vs. Numbers Reconciliation Table      │
-│    ├── Explicit Guidance Ledger                        │
-│    ├── Cash Flow Quality & Conversion Health           │
-│    └── Bull vs. Bear Institutional Case                │
-│                                                        │
-│  Tab 3: EVENT MEMORY                                   │
-│    ├── Active Corporate Commitment Ledger              │
-│    ├── Delivery Track Record / Credibility Scorecard   │
-│    └── Cross-Quarter Audit Timeline                    │
-│                                                        │
-│  Tab 4: WATCHLIST & SETTINGS                           │
-│    ├── 18-Stock Portfolio Table with Live Sparklines   │
-│    └── Threshold Config Sliders (Price %, Volume x)    │
-├────────────────────────────────────────────────────────┤
-│           Mobile Bottom Tab Dock (Fixed 56px)          │
-│   [🔔 Feed]     [🔍 Research]     [🧠 Memory]   [⚙️ Watch]   │
-└────────────────────────────────────────────────────────┘
-```
-
----
-
-## 7. External Dependencies, API Keys & Assumptions
-
-| Dependency / Service | Purpose | Failure Mode / Risk | Mitigation Strategy |
-| :--- | :--- | :--- | :--- |
-| **`yfinance` (Python/API)** | Daily EOD closing prices, volumes, 20-day moving averages | Yahoo Finance endpoint throttling, IP rate-limits, ticker suffix changes | Embedded local historical EOD baseline with fallback cache. App continues running smoothly. |
-| **Exchange Disclosures (NSE/BSE)** | Raw corporate announcements and compliance filings | Exchange website bot-protection, CAPTCHAs, irregular PDF layouts | Curated, high-fidelity announcement feed fixture representing real-world filings across all 17 categories. |
-| **LLM Provider (Gemini API)** | Live extraction, bio synthesis, and on-demand narrative synthesis | Missing `GEMINI_API_KEY`, network timeouts, quota limits | Transparent fallback to pre-synthesized institutional analysis with instant UI response. |
-| **Node.js (v18+)** | Runtime for backend API server and frontend build system | Node version mismatch | Uses standard ES2022 / CommonJS compatible scripts with zero exotic native bindings. |
-
----
-
-## 8. Deployment Risks & Fallback Matrix
-
-1. **Risk: Evaluator runs the app in an environment without internet access or without API keys.**
-   - *Mitigation:* The entire system includes pre-ingested, deterministic local fixtures for all 18 portfolio stocks and 4 ad-hoc research tickers. It requires zero API keys to boot and test every single feature (Push, Pull, Event Memory, and Anomaly alerts).
-2. **Risk: Evaluator tests on varying mobile and desktop viewports.**
-   - *Mitigation:* The frontend is strictly built mobile-first (tested from 375px widths up to 4K desktop screens) with standard CSS touch targets, flex layouts, and zero fixed-width overflow bugs.
-3. **Risk: Hallucination in financial numbers during LLM extraction.**
-   - *Mitigation:* Core headline metrics (Revenue, EBITDA, PBT, PAT) and mathematical deltas are parsed deterministically and verified with primary citations.
-
+Runs are recorded in `job_runs`, and a job never overlaps itself. Run one manually with `npm --prefix backend run jobs:run -- market`.

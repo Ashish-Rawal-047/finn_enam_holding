@@ -1,0 +1,9 @@
+node_modules
+dist
+python/.venv
+**/__pycache__
+.env
+.env.*
+test
+scripts
+*.log
