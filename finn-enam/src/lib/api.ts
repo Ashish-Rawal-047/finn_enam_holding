@@ -123,3 +123,30 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
 }
 
 export { refreshAccessToken };
+
+let serverReady: Promise<boolean> | null = null;
+
+/**
+ * Resolves true once the API answers its health check. A free-tier host sleeps when idle and
+ * can take up to a minute to start, during which the proxy returns gateway errors. Polls only
+ * until the server is up (bounded by `maxMs`); it is not a keep-alive. Shared by all callers.
+ */
+export function waitForServer(maxMs = 90_000): Promise<boolean> {
+  serverReady ??= (async () => {
+    const until = Date.now() + maxMs;
+    while (Date.now() < until) {
+      try {
+        if ((await fetch(`${API_BASE}/health`, { cache: 'no-store' })).ok) return true;
+      } catch {
+        /* not reachable yet */
+      }
+      await sleep(2_500);
+    }
+    serverReady = null; // let a later call try again
+    return false;
+  })();
+  return serverReady;
+}
+
+/** Gateway or network failures: the server is unreachable or still starting. */
+export const isServerStarting = (err: unknown) => err instanceof ApiRequestError && (err.status === 0 || err.status === 502 || err.status === 503 || err.status === 504);

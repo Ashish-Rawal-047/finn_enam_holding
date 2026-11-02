@@ -55,9 +55,10 @@ export function App() {
   if (status === 'loading') {
     return (
       <AppFrame>
-        <div className="flex flex-1 flex-col items-center justify-center gap-3" role="status">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center" role="status">
           <FinnLogo size={40} />
           <Spinner className="text-forest dark:text-emerald" />
+          <SlowStartNote />
         </div>
       </AppFrame>
     );
@@ -70,6 +71,16 @@ export function App() {
     );
   }
   return <Shell theme={theme} setTheme={setTheme} />;
+}
+
+/** Shown only if loading takes a while: a sleeping free-tier server can need up to a minute. */
+function SlowStartNote() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 3_000);
+    return () => clearTimeout(t);
+  }, []);
+  return slow ? <p className="max-w-[260px] text-[12px] leading-snug text-ink-muted">Waking the FINN server. Free hosting sleeps when idle; this can take up to a minute.</p> : null;
 }
 
 // --- URL routing ---------------------------------------------------------------------

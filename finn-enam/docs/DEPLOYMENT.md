@@ -1,5 +1,8 @@
 # FINN — Deployment
 
+* Frontend: https://finn-enam-holding.vercel.app (Vercel project `finn-enam-holding`, root directory `finn-enam`)
+* API: https://finn-api-toih.onrender.com (Render service `finn-api`) — health: `/api/health`
+
 ```
 GitHub (main) ──► Vercel   frontend (static Vite build)  ──/api/*──►  Render  API (Docker: Node 22 + Python yfinance)
                                                                          ├──► Neon Lakebase Postgres (aws-ap-southeast-1)
@@ -37,7 +40,9 @@ The full list with defaults is in `backend/.env.example`. The app's names differ
 | `VITE_DEMO_EMAIL` | `reviewer@finn.demo` |
 | `VITE_DEMO_PASSWORD` | the reviewer demo password |
 
-`VITE_API_BASE_URL` stays **unset**: the frontend calls `/api` on its own origin and Vercel forwards it. Never put any other secret in a `VITE_*` variable.
+`VITE_API_BASE_URL` stays **unset**: the frontend calls `/api` on its own origin and Vercel forwards it. Setting it to the Render URL would make the login cookie cross-site (Safari drops it) and, without the `/api` suffix, break every request. Never put any other secret in a `VITE_*` variable.
+
+**One demo password everywhere.** The local API and Render share the Neon database, and each resets the reviewer password to its own `DEMO_USER_PASSWORD` when it starts (the start-up log says `password reset from DEMO_USER_PASSWORD` when it does). Keep `DEMO_USER_PASSWORD` (Render, `backend/.env`) and `VITE_DEMO_PASSWORD` (Vercel, root `.env`) identical.
 
 ## Updating FINN
 

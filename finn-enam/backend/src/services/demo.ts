@@ -19,12 +19,15 @@ import { userId } from '../middleware/auth.js';
 import { createAccount, hashPassword } from './auth.js';
 import { addDemoPortfolio } from './portfolio.js';
 
-export type DemoSetup = 'disabled' | 'unconfigured' | 'created' | 'updated';
+export type DemoSetup = 'disabled' | 'unconfigured' | 'created' | 'up to date' | 'password reset from DEMO_USER_PASSWORD';
 
 /**
  * Creates or updates the reviewer account from DEMO_USER_EMAIL / DEMO_USER_PASSWORD. Idempotent:
  * re-running never duplicates the account; a changed password is re-hashed; the demo portfolio is
  * topped up. Refuses to take over an existing personal account with the same email.
+ *
+ * Every environment sharing the database (local API, Render) must use the same DEMO_USER_PASSWORD,
+ * or each start-up resets the password to its own value; the result says when that happened.
  */
 export async function ensureDemoAccount(): Promise<DemoSetup> {
   if (!env.DEMO_MODE_ENABLED) return 'disabled';
@@ -33,7 +36,7 @@ export async function ensureDemoAccount(): Promise<DemoSetup> {
   if (!email || !password) return 'unconfigured';
 
   let user = await db.query.users.findFirst({ where: sql`lower(${users.email}) = ${email}` });
-  let result: DemoSetup = 'updated';
+  let result: DemoSetup = 'up to date';
   if (!user) {
     user = await createAccount({ email, password, fullName: env.DEMO_USER_NAME, isDemoAccount: true });
     result = 'created';
@@ -43,6 +46,7 @@ export async function ensureDemoAccount(): Promise<DemoSetup> {
     }
     if (!(await verify(user.passwordHash, password))) {
       await db.update(users).set({ passwordHash: await hashPassword(password), updatedAt: new Date() }).where(eq(users.id, user.id));
+      result = 'password reset from DEMO_USER_PASSWORD';
     }
     await db.update(userProfiles).set({ fullName: env.DEMO_USER_NAME }).where(eq(userProfiles.userId, user.id));
   }

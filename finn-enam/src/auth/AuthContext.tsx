@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { refreshAccessToken, request, tokenStore } from '../lib/api';
+import { refreshAccessToken, request, tokenStore, waitForServer } from '../lib/api';
 import type { AuthResponse, User } from '../lib/types';
 
 type Status = 'loading' | 'authenticated' | 'anonymous';
@@ -31,6 +31,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // A sleeping host answers with gateway errors until it is up; restoring the session before
+      // then would sign a valid session out.
+      await waitForServer();
       const ok = await refreshAccessToken();
       if (cancelled) return;
       if (!ok) {

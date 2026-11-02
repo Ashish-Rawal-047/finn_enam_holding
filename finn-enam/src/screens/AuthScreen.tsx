@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Loader2, ShieldCheck, UserRoundCheck } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
-import { ApiRequestError, apiUrl } from '../lib/api';
+import { ApiRequestError, isServerStarting, waitForServer } from '../lib/api';
 import { FinnLogo } from '../components/common/FinnLogo';
 
 /**
@@ -20,10 +20,17 @@ export const AuthScreen: React.FC = () => {
   const [email, setEmail] = useState(DEMO?.email ?? '');
   const [password, setPassword] = useState(DEMO?.password ?? '');
   const [fullName, setFullName] = useState('');
-  // Wake the API while the reviewer reads the page: a free-tier host may be asleep and take
-  // up to a minute to start. Fire-and-forget; the sign-in request itself is unchanged.
+  // Wake the API while the reviewer reads the page: a free-tier host may be asleep and take up
+  // to a minute to start. A note appears only if it is not answering within a moment.
+  const [server, setServer] = useState<'checking' | 'starting' | 'ready' | 'unreachable'>('checking');
   useEffect(() => {
-    fetch(apiUrl('/health')).catch(() => undefined);
+    let cancelled = false;
+    const slow = setTimeout(() => !cancelled && setServer((s) => (s === 'checking' ? 'starting' : s)), 1_500);
+    waitForServer().then((ok) => !cancelled && setServer(ok ? 'ready' : 'unreachable'));
+    return () => {
+      cancelled = true;
+      clearTimeout(slow);
+    };
   }, []);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,7 +41,9 @@ export const AuthScreen: React.FC = () => {
     try {
       await action();
     } catch (err) {
-      if (err instanceof ApiRequestError && Array.isArray(err.details)) {
+      if (isServerStarting(err)) {
+        setError('The FINN server is still starting (free hosting sleeps when idle). Please try again in a few seconds.');
+      } else if (err instanceof ApiRequestError && Array.isArray(err.details)) {
         setError((err.details as Array<{ message: string }>).map((d) => d.message).join(' '));
       } else {
         setError((err as Error).message);
@@ -83,6 +92,15 @@ export const AuthScreen: React.FC = () => {
               Sign in to demo
             </button>
           </section>
+        )}
+
+        {(server === 'starting' || server === 'unreachable') && (
+          <p role="status" className="flex items-start gap-2 text-[12px] leading-snug text-ink-muted">
+            {server === 'starting' && <Loader2 size={13} className="mt-0.5 shrink-0 animate-spin" />}
+            {server === 'starting'
+              ? 'Starting the FINN server. Free hosting sleeps when idle, so the first visit can take up to a minute.'
+              : 'The FINN server is not responding yet. You can still try to sign in.'}
+          </p>
         )}
 
         <form onSubmit={submit} className="space-y-3" noValidate>
