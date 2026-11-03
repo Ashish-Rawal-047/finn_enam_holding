@@ -105,6 +105,9 @@ const server = app.listen(env.PORT, async () => {
     const p = await timedTask('ai-probe', () => probeAi(true));
     const m = p?.models;
     if (p) console.log(`[finn] AI provider check: ${p.available ? 'available' : 'UNAVAILABLE'}${m ? ` · ${m.fast.id}: ${m.fast.available ? 'ok' : m.fast.error?.code} · ${m.reasoning.id}: ${m.reasoning.available ? 'ok' : m.reasoning.error?.code}` : ` — ${p.error?.message}`}`);
+    const f = p?.fallback;
+    const fb = aiStatus().fallback;
+    console.log(f ? `[finn] AI fallback (${f.provider}): ${f.fast.id}: ${f.fast.available ? 'ok' : f.fast.error?.code}${f.reasoning.id !== f.fast.id ? ` · ${f.reasoning.id}: ${f.reasoning.available ? 'ok' : f.reasoning.error?.code}` : ''}` : `[finn] AI fallback: off (${fb.reason})`);
   }
 });
 

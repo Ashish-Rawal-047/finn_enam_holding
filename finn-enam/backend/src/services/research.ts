@@ -32,7 +32,7 @@ import {
   researchReports,
   sourceDocuments,
 } from '../db/schema.js';
-import { AiError, aiLabel, generateStructuredWithMeta, keepCited, numbersGrounded, type EvidenceItem } from '../ai/gateway.js';
+import { AiError, aiLabel, generateStructuredWithMeta, keepCited, numbersGrounded, providerName, type EvidenceItem } from '../ai/gateway.js';
 import { ApiError } from '../lib/http.js';
 import { freshness, syncCompany } from './companyData.js';
 import { analyseFinancials, analysisEvidence, type FinancialAnalysis } from './financialAnalysis.js';
@@ -755,8 +755,10 @@ export async function generateReport(
     const pending = new Set(aiSections);
     const aiTimings: Record<string, unknown> = {};
     let dropped = 0;
-    let fallbackUsed = false;
+    let fastModelUsed = false;
     const modelsUsed = new Set<string>();
+    const providersUsed = new Set<string>();
+    const secondaryGroups: string[] = [];
     const results = await Promise.allSettled(
       GROUPS.map(async (group) => {
         const def = AI_GROUPS[group];
@@ -771,9 +773,11 @@ export async function generateReport(
             meta: { feature: `research.${group}`, userId },
           });
           dropped += applyGroup(group, res.output as Record<string, unknown>, evidence, sections);
-          fallbackUsed ||= res.usedFallback;
+          fastModelUsed ||= res.fallback === 'fast_model';
+          if (res.fallback === 'secondary_provider') secondaryGroups.push(group);
           modelsUsed.add(res.model);
-          aiTimings[group] = { ms: ms(started), model: res.model, attempts: res.attempts, evidenceItems: evidence.length, inputTokens: res.usage.inputTokens, outputTokens: res.usage.outputTokens, reasoningTokens: res.usage.reasoningTokens };
+          providersUsed.add(res.provider);
+          aiTimings[group] = { ms: ms(started), provider: res.provider, model: res.model, fallback: res.fallback, attempts: res.attempts, evidenceItems: evidence.length, inputTokens: res.usage.inputTokens, outputTokens: res.usage.outputTokens, reasoningTokens: res.usage.reasoningTokens };
         } catch (err) {
           const e = err instanceof AiError ? err : null;
           aiTimings[group] = { ms: ms(started), error: e?.code ?? 'error' };
@@ -789,7 +793,8 @@ export async function generateReport(
     timings.ai = { totalMs: ms(t), groups: aiTimings };
     const errors = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected').map((r) => r.reason as Error);
     // Name the models that actually produced the analysis (a fallback may have been used).
-    if (errors.length < results.length) generator = `${generator}+${(aiLabel() ?? '').split(' · ')[0]} · ${[...modelsUsed].join(', ')}`;
+    // Name the providers and models that actually produced the analysis.
+    if (errors.length < results.length) generator = `${generator}+${[...providersUsed].map(providerName).join('+')} · ${[...modelsUsed].join(', ')}`;
     if (errors.length) {
       const first = errors[0] instanceof AiError ? (errors[0] as AiError).userMessage : errors[0].message.slice(0, 200);
       // Every AI group failed (quota, overload, outage): never replace existing research with a
@@ -801,7 +806,8 @@ export async function generateReport(
       }
       limitations.push(`AI analysis was incomplete: ${errors.length} of ${results.length} analysis groups failed (${first}). Reported facts and calculated metrics are unaffected.`);
     }
-    if (fallbackUsed) limitations.push(`The reasoning model was unavailable (quota, rate limit or overload); the analysis used the faster model (${[...modelsUsed].join(', ')}), which is less thorough.`);
+    if (secondaryGroups.length) limitations.push(`The primary AI provider was unavailable (quota, rate limit or outage), so ${secondaryGroups.length} of ${results.length} analysis groups were written by the secondary provider (${[...modelsUsed].join(', ')}) under the same evidence, citation and figure checks.`);
+    if (fastModelUsed) limitations.push(`The reasoning model was unavailable (quota, rate limit or overload); part of the analysis used the faster model (${[...modelsUsed].join(', ')}), which is less thorough.`);
     if (dropped > 0) limitations.push(`${dropped} AI point(s) were discarded because their citations or figures could not be verified against the evidence.`);
   } else if (!features.ai) {
     limitations.push('AI is not configured; only reported facts and calculated metrics are shown.');

@@ -66,6 +66,16 @@ const schema = z
     NEON_AI_GATEWAY_TOKEN: optionalString,
     NEON_AI_GATEWAY_BASE_URL: optionalString,
 
+    // Secondary AI provider, used only when the primary is rate-limited, out of quota, overloaded
+    // or unreachable. Off unless AI_FALLBACK_PROVIDER=openai. Uses the OpenAI Responses API.
+    AI_FALLBACK_PROVIDER: blankAsUnset(z.enum(['openai', 'none']).optional()),
+    OPENAI_API_KEY: optionalString,
+    OPENAI_BASE_URL: optionalString, // optional (proxies, tests); default api.openai.com
+    OPENAI_MODEL: optionalString, // fast tier (extraction, Ask FINN)
+    OPENAI_REASONING_MODEL: optionalString, // research synthesis (defaults to OPENAI_MODEL)
+    OPENAI_PRICE_INPUT_PER_MTOK: blankAsUnset(z.coerce.number().nonnegative().optional()),
+    OPENAI_PRICE_OUTPUT_PER_MTOK: blankAsUnset(z.coerce.number().nonnegative().optional()),
+
     // Neon Realtime (optional: notifications fall back to polling)
     NEON_REALTIME_URL: optionalString,
     NEON_REALTIME_SECRET: optionalString,
@@ -141,6 +151,18 @@ function resolveAiProvider(): { provider: NonNullable<Env['AI_PROVIDER']>; reaso
 }
 
 export const ai = resolveAiProvider();
+
+/** Resolved secondary (fallback) provider, or the reason it is not in use. */
+function resolveAiFallback(): { provider: 'openai'; reason?: undefined } | { provider: null; reason: string } {
+  if (env.AI_FALLBACK_PROVIDER !== 'openai') return { provider: null, reason: 'No fallback provider configured (AI_FALLBACK_PROVIDER).' };
+  if (!ai.provider) return { provider: null, reason: 'The fallback is used only alongside a configured primary provider.' };
+  if (ai.provider === 'openai') return { provider: null, reason: 'The primary provider is already OpenAI.' };
+  if (!env.OPENAI_API_KEY) return { provider: null, reason: 'AI_FALLBACK_PROVIDER=openai needs OPENAI_API_KEY.' };
+  if (!env.OPENAI_MODEL) return { provider: null, reason: 'AI_FALLBACK_PROVIDER=openai needs OPENAI_MODEL (FINN does not guess model names).' };
+  return { provider: 'openai' };
+}
+
+export const aiFallback = resolveAiFallback();
 
 export const features = {
   ai: ai.provider !== null,

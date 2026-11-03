@@ -170,3 +170,84 @@ test('event comparisons read as prose, not evidence ids', () => {
     "The new announcement and this precedent are both PLI plants; the new announcement's capex exceeds this precedent's. Another precedent differs.",
   );
 });
+
+// --- Secondary provider (OpenAI fallback) ------------------------------------------------------
+
+const counting = (impl: () => ReturnType<typeof okResult> | never) => {
+  const m = { calls: 0, model: null as unknown as MockLanguageModelV3 };
+  m.model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      m.calls++;
+      return impl();
+    },
+  });
+  return m;
+};
+
+test('a rate-limited primary switches to the secondary provider; its output is validated the same way', async () => {
+  const primary = counting(() => {
+    throw apiError(429, '{"quotaId":"GenerateRequestsPerMinutePerProjectPerModel","retryDelay":"60s"}');
+  });
+  const secondary = counting(() => okResult(okJson));
+  __setModelsForTest({ fast: primary.model, reasoning: primary.model, embedding: null, label: 'mock' }, { fast: secondary.model, reasoning: secondary.model, label: 'mock-fallback' });
+  const r = await generateStructuredWithMeta({ schema: bullSchema, task: 't', evidence, tier: 'reasoning' });
+  assert.equal(r.provider, 'test-fallback');
+  assert.equal(r.fallback, 'secondary_provider');
+  assert.equal(r.usedFallback, true);
+  assert.equal(r.model, 'mock-fallback-reasoning');
+  assert.equal(r.output.bullCase[0].evidenceIds[0], 'E1');
+  assert.equal(primary.calls, 1, 'a long retry-after is not waited for');
+  assert.equal(secondary.calls, 1);
+  // Same prompt contract for both providers: grounding rules and numbered evidence.
+  const sent = JSON.stringify(secondary.model.doGenerateCalls[0].prompt);
+  assert.match(sent, /Use ONLY the evidence provided/);
+  assert.match(sent, /\[E1\]/);
+  __setModelsForTest(null);
+});
+
+test('configuration errors never switch providers (a bad primary key is reported, not hidden)', async () => {
+  const primary = counting(() => {
+    throw apiError(401, 'API_KEY_INVALID');
+  });
+  const secondary = counting(() => okResult(okJson));
+  __setModelsForTest({ fast: primary.model, reasoning: primary.model, embedding: null, label: 'mock' }, { fast: secondary.model, reasoning: secondary.model, label: 'mock-fallback' });
+  await assert.rejects(
+    () => generateStructuredWithMeta({ schema: bullSchema, task: 't', evidence, tier: 'fast' }),
+    (e: unknown) => e instanceof AiError && e.code === 'invalid_credentials',
+  );
+  assert.equal(secondary.calls, 0);
+  __setModelsForTest(null);
+});
+
+test('an exhausted primary quota sends later requests straight to the secondary (no wasted calls)', async () => {
+  const primary = counting(() => {
+    throw apiError(429, '{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier","retryDelay":"3600s"}');
+  });
+  const secondary = counting(() => okResult(okJson));
+  __setModelsForTest({ fast: primary.model, reasoning: primary.model, embedding: null, label: 'mock' }, { fast: secondary.model, reasoning: secondary.model, label: 'mock-fallback' });
+  for (let i = 0; i < 3; i++) assert.equal((await generateStructuredWithMeta({ schema: bullSchema, task: 't', evidence, tier: 'fast' })).provider, 'test-fallback');
+  assert.equal(primary.calls, 1, 'the exhausted primary model is skipped until its quota resets');
+  assert.equal(secondary.calls, 3);
+  __setModelsForTest(null);
+});
+
+test('secondary output that fails the schema is rejected, with bounded attempts', async () => {
+  const primary = counting(() => {
+    throw apiError(503, 'overloaded');
+  });
+  const secondary = counting(() => okResult(JSON.stringify({ bullCase: [{ text: 'No citations field' }] })));
+  __setModelsForTest({ fast: primary.model, reasoning: primary.model, embedding: null, label: 'mock' }, { fast: secondary.model, reasoning: secondary.model, label: 'mock-fallback' });
+  await assert.rejects(
+    () => generateStructuredWithMeta({ schema: bullSchema, task: 't', evidence, tier: 'fast' }),
+    (e: unknown) => e instanceof AiError && e.code === 'overloaded',
+  );
+  assert.equal(secondary.calls, 2, 'at most two attempts on the secondary provider');
+  assert.ok(primary.calls >= 1 && primary.calls <= 3, 'primary retries are bounded');
+  __setModelsForTest(null);
+});
+
+test('an OpenAI out-of-credit response is an exhausted quota, not a retryable rate limit', () => {
+  const e = classifyAiError(apiError(429, '{"error":{"message":"You exceeded your current quota, please check your plan and billing details.","type":"insufficient_quota","code":"insufficient_quota"}}'));
+  assert.equal(e.code, 'quota_exhausted');
+  assert.doesNotMatch(classifyAiError(apiError(400, 'bad key sk-proj-AbCdEf123456789xyz')).message, /sk-proj-AbCd/);
+});
