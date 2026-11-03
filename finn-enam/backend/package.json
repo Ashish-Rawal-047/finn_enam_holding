@@ -17,9 +17,7 @@
     "test:api": "tsx --test --test-concurrency=1 test/api.integration.ts"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.137",
     "@ai-sdk/google": "^3.0.140",
-    "@ai-sdk/openai-compatible": "^2.0.88",
     "@neon/realtime": "^0.1.2",
     "@node-rs/argon2": "^2.2.2",
     "ai": "^6.0.320",

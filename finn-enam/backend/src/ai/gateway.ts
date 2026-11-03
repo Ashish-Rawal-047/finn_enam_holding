@@ -1,7 +1,6 @@
 /**
- * AI service layer. Provider and models come from configuration (see config/env.ts):
- * Google Gemini (FINN's provider), with Anthropic or an OpenAI-compatible endpoint available as
- * alternative configurations. No paid fallback provider is used.
+ * AI service layer. Google Gemini is FINN's only AI provider (free tier; models from config/env.ts).
+ * No paid provider is used, as primary or as fallback.
  *
  * Rules every caller relies on:
  *  - Output is always structured JSON validated against a zod schema.
@@ -14,9 +13,7 @@
  *    bounded exponential backoff. Nothing is ever substituted for a failed response.
  *  - Every provider call is recorded in ai_usage (tokens, latency, outcome; never prompts or keys).
  */
-import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { APICallError, embedMany, generateText, NoObjectGeneratedError, Output, RetryError, type EmbeddingModel, type LanguageModel } from 'ai';
 import { ZodError, type z } from 'zod';
 import { ai, env } from '../config/env.js';
@@ -145,25 +142,13 @@ interface Models {
   reasoningId: string;
 }
 
+/** Google Gemini: FINN's only AI provider (free tier). */
 function buildModels(): Models | null {
-  const fastId = env.AI_MODEL;
-  const reasoningId = env.AI_REASONING_MODEL ?? env.AI_MODEL;
-  switch (ai.provider) {
-    case 'anthropic': {
-      const p = createAnthropic({ apiKey: env.AI_API_KEY, ...(env.AI_BASE_URL ? { baseURL: env.AI_BASE_URL } : {}) });
-      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: null, label: `Anthropic · ${reasoningId}`, provider: 'anthropic', fastId: fastId!, reasoningId: reasoningId! };
-    }
-    case 'google': {
-      const p = createGoogleGenerativeAI({ apiKey: env.AI_API_KEY, ...(env.AI_BASE_URL ? { baseURL: env.AI_BASE_URL } : {}) });
-      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: env.AI_EMBEDDING_MODEL ? p.textEmbeddingModel(env.AI_EMBEDDING_MODEL) : null, label: `Google · ${reasoningId}`, provider: 'google', fastId: fastId!, reasoningId: reasoningId! };
-    }
-    case 'openai-compatible': {
-      const p = createOpenAICompatible({ name: 'custom', apiKey: env.AI_API_KEY, baseURL: env.AI_BASE_URL! });
-      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: env.AI_EMBEDDING_MODEL ? p.textEmbeddingModel(env.AI_EMBEDDING_MODEL) : null, label: `${env.AI_BASE_URL} · ${reasoningId}`, provider: 'openai-compatible', fastId: fastId!, reasoningId: reasoningId! };
-    }
-    default:
-      return null;
-  }
+  if (ai.provider !== 'google') return null;
+  const fastId = env.AI_MODEL!;
+  const reasoningId = env.AI_REASONING_MODEL ?? fastId;
+  const p = createGoogleGenerativeAI({ apiKey: env.AI_API_KEY, ...(env.AI_BASE_URL ? { baseURL: env.AI_BASE_URL } : {}) });
+  return { fast: p(fastId), reasoning: p(reasoningId), embedding: env.AI_EMBEDDING_MODEL ? p.textEmbeddingModel(env.AI_EMBEDDING_MODEL) : null, label: `Google · ${reasoningId}`, provider: 'google', fastId, reasoningId };
 }
 
 let models = buildModels();

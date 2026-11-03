@@ -6,7 +6,7 @@ A mobile investment-intelligence app (on a laptop it opens as the same app in a 
 * **Backend:** Node · Express 5 · TypeScript · Drizzle ORM
 * **Neon:** Lakebase Postgres with pgvector, Realtime
 * **Market data:** Yahoo Finance through `yfinance` (Python bridge)
-* **AI:** configurable provider (Neon AI Gateway, Anthropic, OpenAI, Google or any OpenAI-compatible endpoint) through the AI SDK
+* **AI:** Google Gemini (free tier) through the AI SDK — the only AI provider; no paid AI service is needed
 
 **Read first: what is live and what is demo**
 
@@ -62,12 +62,12 @@ To enable the reviewer demo login locally, set `DEMO_MODE_ENABLED=true`, `DEMO_U
 Set these in `backend/.env` (never in frontend code), then restart the API:
 
 ```bash
-AI_PROVIDER=google           # or anthropic | openai | openai-compatible | neon
-AI_API_KEY=...               # not needed for neon
+AI_PROVIDER=google           # the only supported provider
+AI_API_KEY=...               # Gemini API key (free tier) from https://aistudio.google.com
 AI_MODEL=gemini-3.5-flash-lite        # fast tier + fallback
 AI_REASONING_MODEL=gemini-3.5-flash   # research synthesis (optional, defaults to AI_MODEL)
 AI_EMBEDDING_MODEL=gemini-embedding-001  # optional: semantic Event Memory matching
-AI_BASE_URL=                 # openai-compatible only
+AI_BASE_URL=                 # optional: override the Gemini API address (proxies, tests)
 ```
 
 At startup the API logs the provider and checks that each model is served to the key (for Gemini this is a metadata lookup that uses no generation quota). `GET /api/ai/status` returns the same check; `GET /api/ai/usage` returns your requests, tokens and latency.

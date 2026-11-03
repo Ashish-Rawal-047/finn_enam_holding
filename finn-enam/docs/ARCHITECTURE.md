@@ -20,7 +20,7 @@ finn-enam/
 │   ├── src/routes/         REST endpoints
 │   ├── src/services/       Alert engine, Event Memory, research, ingestion, auth
 │   ├── src/providers/      Provider-independent data adapters (demo today)
-│   ├── src/ai/             AI service layer over the Neon AI Gateway
+│   ├── src/ai/             AI service layer over Google Gemini
 │   ├── src/realtime/       Sealed live queries for notifications
 │   └── src/jobs/           Scheduled ingestion (node-cron) + CLI
 └── scripts/ui-audit.mjs    Responsive audit via Chrome DevTools Protocol
@@ -50,7 +50,7 @@ flowchart LR
     Services --> AI[AI service layer]
   end
   Services -->|node-postgres pool, pooled URL| PG[(Lakebase Postgres on Neon + pgvector)]
-  AI --> GW[Neon AI Gateway]
+  AI --> GW[Google Gemini API]
   RT --- PG
 ```
 

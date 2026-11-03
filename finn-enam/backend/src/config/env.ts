@@ -46,11 +46,10 @@ const schema = z
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
 
     // AI provider (optional: AI features report "not configured" when absent).
-    //   anthropic | google – direct provider with AI_API_KEY (FINN runs on Google Gemini)
-    //   openai-compatible  – any OpenAI-compatible endpoint at AI_BASE_URL with AI_API_KEY
-    AI_PROVIDER: blankAsUnset(z.enum(['anthropic', 'google', 'openai-compatible']).optional()),
+    //   google – Google Gemini with AI_API_KEY (the only supported provider)
+    AI_PROVIDER: blankAsUnset(z.enum(['google']).optional()),
     AI_API_KEY: optionalString,
-    AI_BASE_URL: optionalString,
+    AI_BASE_URL: optionalString, // optional override of the Gemini API address (proxies, tests)
     AI_MODEL: optionalString, // fast model: extraction, classification
     AI_REASONING_MODEL: optionalString, // research synthesis (defaults to AI_MODEL)
     AI_EMBEDDING_MODEL: optionalString, // optional: semantic Event Memory matching
@@ -128,10 +127,8 @@ export const env = load();
 function resolveAiProvider(): { provider: NonNullable<Env['AI_PROVIDER']>; reason?: undefined } | { provider: null; reason: string } {
   const provider = env.AI_PROVIDER;
   if (!provider) return { provider: null, reason: env.AI_API_KEY ? 'AI_API_KEY is set but AI_PROVIDER is not.' : 'No AI provider configured.' };
-
   if (!env.AI_API_KEY) return { provider: null, reason: `AI_PROVIDER=${provider} needs AI_API_KEY.` };
   if (!env.AI_MODEL) return { provider: null, reason: `AI_PROVIDER=${provider} needs AI_MODEL (FINN does not guess model names).` };
-  if (provider === 'openai-compatible' && !env.AI_BASE_URL) return { provider: null, reason: 'AI_PROVIDER=openai-compatible needs AI_BASE_URL.' };
   return { provider };
 }
 

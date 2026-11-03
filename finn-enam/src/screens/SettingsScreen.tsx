@@ -626,7 +626,7 @@ const SystemStatus: React.FC = () => {
       {health.data ? (
         <ul className="space-y-1.5 text-xs">
           <StatusRow label="Database (Neon)" ok={health.data.database.connected} detail={health.data.database.connected ? `${health.data.database.latencyMs} ms` : 'unreachable'} />
-          <StatusRow label="AI (Neon AI Gateway)" ok={health.data.ai.configured} detail={health.data.ai.configured ? health.data.ai.chatModel ?? '' : 'not configured'} />
+          <StatusRow label="AI (Google Gemini)" ok={health.data.ai.configured} detail={health.data.ai.configured ? health.data.ai.chatModel ?? '' : 'not configured'} />
           <StatusRow label="Live notifications (Neon Realtime)" ok={health.data.realtime.configured} detail={health.data.realtime.configured ? 'live' : 'polling fallback'} />
           {Object.entries(health.data.providers).map(([k, p]) => (
             <StatusRow key={k} label={k.replace(/([A-Z])/g, ' $1').toLowerCase()} ok={p.configured} detail={p.isDemo ? 'demo data' : p.configured ? p.name : 'not configured'} demo={p.isDemo} />
