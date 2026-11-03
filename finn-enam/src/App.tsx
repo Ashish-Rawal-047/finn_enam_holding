@@ -50,14 +50,14 @@ const ResearchScreen = lazy(() => loadResearch().then((m) => ({ default: m.Resea
 
 type Theme = 'light' | 'dark';
 
+/** Light by default (whatever the device setting); dark only when chosen on this device. */
 function readTheme(): Theme {
   try {
-    const saved = localStorage.getItem('finn-theme');
-    if (saved === 'light' || saved === 'dark') return saved;
+    if (localStorage.getItem('finn-theme') === 'dark') return 'dark';
   } catch {
     /* storage unavailable */
   }
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return 'light';
 }
 
 export function App() {
@@ -76,7 +76,8 @@ export function App() {
 
   // Adopt the theme saved on the profile once after sign-in.
   useEffect(() => {
-    if (user?.theme) setTheme(user.theme);
+    // The shared reviewer account has no theme of its own: each reviewer's choice stays on their device.
+    if (user?.theme && !user.isDemoAccount) setTheme(user.theme);
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (status === 'loading' || status === 'offline') {

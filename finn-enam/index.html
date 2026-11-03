@@ -6,10 +6,9 @@
     <meta name="theme-color" content="#F7F5ED" />
     <title>FINN — Investment Intelligence | ENAM</title>
     <script>
-      // Apply the saved theme before the first paint (avoids a light flash for dark-mode users).
+      // Light by default; dark only when chosen on this device (applied before the first paint).
       try {
-        var t = localStorage.getItem('finn-theme');
-        if (t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark');
+        if (localStorage.getItem('finn-theme') === 'dark') document.documentElement.classList.add('dark');
       } catch (e) {}
     </script>
     <style>

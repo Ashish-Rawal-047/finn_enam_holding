@@ -396,8 +396,14 @@ intelRouter.patch(
     if (Object.keys(patch).some((k) => k !== 'theme') && (await isDemoAccount(userId(req)))) {
       throw ApiError.forbidden('The shared reviewer demo account can only change its theme. Create your own account to edit a profile.');
     }
-    await db.update(userProfiles).set({ ...patch, updatedAt: new Date() }).where(eq(userProfiles.userId, userId(req)));
-    await audit({ userId: userId(req), action: 'settings.profile', metadata: { fields: Object.keys(patch) }, req });
+    // A theme chosen on the shared account is kept on that reviewer's device only, so one
+    // reviewer's choice never changes the app for the others.
+    const shared = 'theme' in patch && (await isDemoAccount(userId(req)));
+    const stored = shared ? Object.fromEntries(Object.entries(patch).filter(([k]) => k !== 'theme')) : patch;
+    if (Object.keys(stored).length) {
+      await db.update(userProfiles).set({ ...stored, updatedAt: new Date() }).where(eq(userProfiles.userId, userId(req)));
+      await audit({ userId: userId(req), action: 'settings.profile', metadata: { fields: Object.keys(stored) }, req });
+    }
     res.json(await settingsFor(userId(req)));
   }),
 );

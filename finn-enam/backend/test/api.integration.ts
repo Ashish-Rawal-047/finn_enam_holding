@@ -602,6 +602,13 @@ test('reviewer demo account: signs in, sees demo data, cannot change shared reco
   assert.equal((await call('/auth/password', { method: 'POST', client: demo, body: { currentPassword: process.env.TEST_DEMO_PASSWORD, newPassword: 'Changed2026password' } })).status, 403);
   assert.equal((await call('/settings', { method: 'PATCH', client: demo, body: { fullName: 'Someone else' } })).status, 403);
   assert.equal((await call('/settings', { method: 'PATCH', client: demo, body: { theme: 'light' } })).status, 200, 'theme is a harmless preference');
+  // A reviewer's theme choice stays on their device: the shared profile keeps the default light theme.
+  assert.equal((await call('/settings', { method: 'PATCH', client: demo, body: { theme: 'dark' } })).status, 200);
+  assert.equal((await call('/auth/me', { client: demo })).json.user.theme, 'light', 'shared account theme is not stored');
+  // Personal accounts still save their theme.
+  assert.equal((await call('/settings', { method: 'PATCH', client: alice, body: { theme: 'dark' } })).status, 200);
+  assert.equal((await call('/auth/me', { client: alice })).json.user.theme, 'dark');
+  await call('/settings', { method: 'PATCH', client: alice, body: { theme: 'light' } });
   const event = (await call('/events?pageSize=1', { client: demo })).json.items[0];
   assert.equal((await call(`/events/${event.id}`, { method: 'PATCH', client: demo, body: { status: 'delayed' } })).status, 403, 'Event Memory is shared');
   assert.equal((await call(`/events/${event.id}/milestones`, { method: 'POST', client: demo, body: {} })).status, 403);

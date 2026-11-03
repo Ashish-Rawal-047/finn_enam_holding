@@ -48,7 +48,8 @@ export async function ensureDemoAccount(): Promise<DemoSetup> {
       await db.update(users).set({ passwordHash: await hashPassword(password), updatedAt: new Date() }).where(eq(users.id, user.id));
       result = 'password reset from DEMO_USER_PASSWORD';
     }
-    await db.update(userProfiles).set({ fullName: env.DEMO_USER_NAME }).where(eq(userProfiles.userId, user.id));
+    // The shared account opens in the default light theme for every reviewer.
+    await db.update(userProfiles).set({ fullName: env.DEMO_USER_NAME, theme: 'light' }).where(eq(userProfiles.userId, user.id));
   }
   await addDemoPortfolio(user.id);
   demoCache.set(user.id, { demo: true, expires: Date.now() + CACHE_MS });
