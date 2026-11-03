@@ -116,7 +116,7 @@ export const EventDetailSheet: React.FC<Props> = ({ eventId, compareWithId, onCl
 
           {/* Precedents */}
           <section className="space-y-2">
-            <SectionTitle title="Historical precedents" meta="Same-company history first · structured match (company, category, project type, scale, wording) plus semantic similarity when embeddings exist" />
+            <SectionTitle title="Historical precedents" />
             {e.similarEvents.length === 0 ? (
               <p className="rounded-xl border border-dashed border-divider dark:border-ink-border p-4 text-xs text-ink-muted">No comparable historical event is recorded.</p>
             ) : (
@@ -158,7 +158,7 @@ export const EventDetailSheet: React.FC<Props> = ({ eventId, compareWithId, onCl
 
           {e.matchedBy.length > 0 && (
             <section className="space-y-2">
-              <SectionTitle title="Matched by later announcements" meta="Newer commitments for which this event is a precedent" />
+              <SectionTitle title="Matched by later announcements" />
               <ul className="divide-y divide-divider overflow-hidden rounded-card border border-divider bg-paper dark:divide-ink-border dark:border-ink-border dark:bg-ink-surface">
                 {e.matchedBy.map((m) => (
                   <li key={m.id}>

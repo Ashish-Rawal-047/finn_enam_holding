@@ -94,18 +94,18 @@ export const PortfolioPanel: React.FC<{ overview: HomeResponse['overview']; hold
             <div className={cx('font-mono text-[32px] font-medium leading-none tracking-[-0.03em]', tone === 'up' ? 'text-fin-up dark:text-emerald' : tone === 'down' ? 'text-fin-red' : 'text-ink dark:text-white')}>
               <CountUp value={avg} format={(n) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(2)}%`} />
             </div>
-            <div className="mt-1.5 text-[11px] text-ink-muted">Average daily move, equal-weighted</div>
+            <div className="mt-1.5 text-[11px] text-ink-muted">Avg. daily move</div>
           </div>
           {index.length > 1 && (
             <div className="w-[128px] shrink-0 text-forest-dark dark:text-ink-light">
               <IndexLine values={index} />
-              <div className="text-right text-[10px] text-ink-muted">Index · {index.length} sessions</div>
+              <div className="text-right text-[10px] text-ink-muted">{index.length}D</div>
             </div>
           )}
         </div>
         <Breadth up={overview.advancing} down={overview.declining} flat={overview.unchanged} />
         {ranked.length > 1 && (
-          <div className="divide-y divide-divider border-t border-divider dark:divide-ink-border dark:border-ink-border">
+          <div className="divide-y divide-divider/70 dark:divide-ink-border/70">
             <Leader label="Top gainer" h={ranked[0]} onOpen={onOpenCompany} />
             <Leader label="Top decliner" h={ranked[ranked.length - 1]} onOpen={onOpenCompany} />
           </div>
@@ -123,9 +123,9 @@ export const PortfolioPanel: React.FC<{ overview: HomeResponse['overview']; hold
           <Metric label="Open events" icon={<CalendarClock size={13} strokeWidth={1.75} />} value={<CountUp value={overview.openEvents} format={(n) => Math.round(n).toString()} />} />
         </Rise>
       </Stagger>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-divider px-4 py-2.5 text-[11px] text-ink-muted dark:border-ink-border">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-[11px] text-ink-muted">
         <span>Close of {overview.lastUpdated ? dateTime(overview.lastUpdated) : '—'}</span>
-        <span className="font-mono">{overview.withMarketData}/{overview.trackedCompanies} priced · {overview.provider ?? 'no provider'}</span>
+        <span className="font-mono">{overview.provider ?? ''}</span>
       </div>
     </Panel>
   );

@@ -158,7 +158,7 @@ export const CompanySheet: React.FC<Props> = ({ companyId, theme, onClose, onIns
 
           {/* Signals */}
           <section className="space-y-2">
-            <SectionTitle title="Signal history" meta="Every detected signal for this company, newest first" />
+            <SectionTitle title="Signal history" />
             {signals.isLoading ? (
               <LoadingBlock rows={2} />
             ) : (signals.data?.items.length ?? 0) === 0 ? (
@@ -184,7 +184,7 @@ export const CompanySheet: React.FC<Props> = ({ companyId, theme, onClose, onIns
 
           {/* Announcements */}
           <section className="space-y-2">
-            <SectionTitle title="Corporate announcements" meta="Ranked by FINN materiality score" />
+            <SectionTitle title="Corporate announcements" />
             {(overview.data?.announcements.length ?? 0) === 0 ? (
               <EmptyState title="No announcements stored" body="No announcements provider has returned filings for this company." />
             ) : (
@@ -225,7 +225,7 @@ export const CompanySheet: React.FC<Props> = ({ companyId, theme, onClose, onIns
 
           {overview.data && overview.data.executionReliability.eventsWithOutcome > 0 && (
             <Panel className="space-y-1">
-              <SectionTitle title="Execution track record" meta="From Event Memory outcomes" />
+              <SectionTitle title="Execution track record" />
               <p className="text-sm text-ink dark:text-white">
                 {overview.data.executionReliability.completed} completed · {overview.data.executionReliability.delayed} delayed · {overview.data.executionReliability.abandoned} abandoned
                 {overview.data.executionReliability.onTimeRate !== null && ` · ${overview.data.executionReliability.onTimeRate}% on time`}

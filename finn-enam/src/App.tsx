@@ -73,14 +73,14 @@ export function App() {
   return <Shell theme={theme} setTheme={setTheme} />;
 }
 
-/** Shown only if loading takes a while: a sleeping free-tier server can need up to a minute. */
+/** Shown only if loading takes a while (a sleeping free-tier server can need up to a minute). */
 function SlowStartNote() {
   const [slow, setSlow] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setSlow(true), 3_000);
     return () => clearTimeout(t);
   }, []);
-  return slow ? <p className="max-w-[260px] text-[12px] leading-snug text-ink-muted">Waking the FINN server. Free hosting sleeps when idle; this can take up to a minute.</p> : null;
+  return slow ? <p className="text-[12px] text-ink-muted">Connecting…</p> : null;
 }
 
 // --- URL routing ---------------------------------------------------------------------
@@ -196,7 +196,6 @@ function Shell({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void
             onToggleTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')}
             unreadCount={unread}
             onOpenNotifications={() => setNotificationsOpen(true)}
-            liveMode={liveMode}
           />
         }
         navigation={<BottomNav activeTab={tab} onSelectTab={go} badges={badges} />}

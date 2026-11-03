@@ -1,11 +1,11 @@
 import React, { useId, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowUpRight, ChevronDown, FileSearch, FileText } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, FileText } from 'lucide-react';
 import { useDigest } from '../../lib/queries';
 import { dateTime, relativeTime, shortDate } from '../../lib/format';
 import type { DigestItem, DigestResponse, DigestWindow } from '../../lib/types';
 import { EASE_OUT } from '../motion';
-import { Chips, DemoPill, ErrorState, Field, LoadingBlock, PriorityBadge, SecondaryButton, SectionTitle, Ticker, cx, inputCls } from '../ui';
+import { Chips, DemoPill, ErrorState, Field, LoadingBlock, PriorityBadge, SectionTitle, TextButton, Ticker, cx, inputCls } from '../ui';
 import { CompanyLogo } from '../company/CompanyLogo';
 
 const WINDOWS: Array<{ id: DigestWindow; label: string }> = [
@@ -68,7 +68,7 @@ export const FilingsDigest: React.FC<{ onInspectSignal: (signalId: string) => vo
 
   return (
     <section className="space-y-4" aria-label="Recent Filings">
-      <SectionTitle title="Recent Filings" meta="Every filing across your portfolio — what matters first, routine paperwork folded away" />
+      <SectionTitle title="Recent Filings" />
 
       <Chips<DigestWindow> ariaLabel="Digest window" value={sel.window} onChange={(window) => update({ window })} options={WINDOWS} />
 
@@ -93,8 +93,8 @@ export const FilingsDigest: React.FC<{ onInspectSignal: (signalId: string) => vo
       ) : (
         <div className={cx('space-y-3 transition-opacity', digest.isFetching && digest.isPlaceholderData && 'opacity-60')}>
           <p className="text-[12px] text-ink-muted">
-            <span className="font-mono text-ink dark:text-white">{data.total}</span> {data.total === 1 ? 'filing' : 'filings'} {windowPhrase(data.window)}
-            {data.window.id !== 'custom' && <> · since {dateTime(data.window.start)}</>}
+            <span className="font-mono text-ink dark:text-white">{data.total}</span> {data.total === 1 ? 'filing' : 'filings'}
+            {data.isDemo && <DemoPill className="ml-2 align-middle" />}
             {data.byPriority.critical + data.byPriority.high > 0 && (
               <>
                 {' '}· <span className="font-medium text-fin-amber">{data.byPriority.critical + data.byPriority.high} high priority</span>
@@ -111,9 +111,9 @@ export const FilingsDigest: React.FC<{ onInspectSignal: (signalId: string) => vo
               ))}
             </ul>
           ) : (
-            <p className="rounded-card border border-dashed border-divider px-4 py-4 text-center text-[12.5px] text-ink-muted dark:border-ink-border">Only routine paperwork was filed {windowPhrase(data.window)}.</p>
+            <p className="text-[12.5px] text-ink-muted">Only routine filings {windowPhrase(data.window)}.</p>
           )}
-          {data.materialCount > data.material.length && <p className="text-[11.5px] text-ink-muted">Showing the {data.material.length} most material of {data.materialCount}. Narrow the window to see the rest.</p>}
+          {data.materialCount > data.material.length && <p className="text-[11.5px] text-ink-muted">Top {data.material.length} of {data.materialCount}.</p>}
 
           {data.routineCount > 0 && (
             <div className="overflow-hidden rounded-card border border-divider dark:border-ink-border">
@@ -126,7 +126,6 @@ export const FilingsDigest: React.FC<{ onInspectSignal: (signalId: string) => vo
                 <FileText size={14} strokeWidth={1.75} className="shrink-0 text-ink-subtle" />
                 <span className="flex-1">
                   Routine paperwork <span className="font-mono text-[11px] text-ink-subtle">{data.routineCount}</span>
-                  <span className="hidden"> · shareholding patterns, allotments, postal ballots and similar</span>
                 </span>
                 <ChevronDown size={16} strokeWidth={1.75} className={cx('shrink-0 transition-transform duration-200', routineOpen && 'rotate-180')} />
               </button>
@@ -156,11 +155,6 @@ export const FilingsDigest: React.FC<{ onInspectSignal: (signalId: string) => vo
             </div>
           )}
 
-          {data.isDemo && (
-            <p className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-muted">
-              <DemoPill /> These filings are demonstration fixtures; no licensed exchange filings feed is connected.
-            </p>
-          )}
         </div>
       )}
     </section>
@@ -184,7 +178,6 @@ const MaterialRow: React.FC<{ item: DigestItem; onInspectSignal: (id: string) =>
           {relativeTime(item.announcedAt)}
         </time>
         {item.exchange && <span>· {item.exchange}</span>}
-        {item.isDemo && <DemoPill />}
       </div>
     </>
   );
@@ -198,39 +191,19 @@ const MaterialRow: React.FC<{ item: DigestItem; onInspectSignal: (id: string) =>
   );
 };
 
-const fullDateTime = (iso: string) => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-
-/** Compact empty window: what is missing, when the last filing was, and one way to widen the window. */
+/** Empty window: one line, with a way to widen it when older filings exist. */
 const EmptyDigest: React.FC<{ data: DigestResponse; onSelect: (patch: Partial<Selection>) => void }> = ({ data, onSelect }) => {
   const latest = data.latestFilingAt;
   const withinWeek = latest !== null && Date.now() - new Date(latest).getTime() < 7 * 86_400_000;
-  const action = !latest ? null : withinWeek && (data.window.id === '24h' || data.window.id === '48h') ? (
-    <SecondaryButton className="min-h-[38px] px-3.5 text-[12.5px]" onClick={() => onSelect({ window: '7d' })}>
-      Show the last 7 days
-    </SecondaryButton>
-  ) : (
-    <SecondaryButton className="min-h-[38px] px-3.5 text-[12.5px]" onClick={() => onSelect({ window: 'custom', from: localDate(new Date(latest)), to: localDate() })}>
-      Show filings since {shortDate(localDate(new Date(latest)))}
-    </SecondaryButton>
-  );
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-2.5 rounded-card border border-dashed border-divider px-4 py-3.5 dark:border-ink-border">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cream-dark text-ink-muted dark:bg-ink-surfaceSubtle" aria-hidden>
-        <FileSearch size={16} strokeWidth={1.75} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[13.5px] font-medium text-ink dark:text-white">{latest ? `No filings ${windowPhrase(data.window)}` : 'No filings yet'}</p>
-        <p className="mt-0.5 text-[12px] leading-relaxed text-ink-muted">
-          {latest ? (
-            <>
-              Most recent filing on your portfolio: <time dateTime={latest}>{fullDateTime(latest)}</time> ({relativeTime(latest)})
-            </>
-          ) : (
-            'No filings are stored for the companies in your portfolio yet.'
-          )}
-        </p>
-      </div>
-      {action && <div className="col-start-2">{action}</div>}
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-[13px] text-ink-muted">No recent filings.</p>
+      {latest &&
+        (withinWeek && (data.window.id === '24h' || data.window.id === '48h') ? (
+          <TextButton onClick={() => onSelect({ window: '7d' })}>Show last 7 days</TextButton>
+        ) : (
+          <TextButton onClick={() => onSelect({ window: 'custom', from: localDate(new Date(latest)), to: localDate() })}>Since {shortDate(localDate(new Date(latest)))}</TextButton>
+        ))}
     </div>
   );
 };

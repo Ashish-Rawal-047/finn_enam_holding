@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, GitCompareArrows, Plus, Search } from 'lucide-react';
+import { GitCompareArrows, Plus, Search } from 'lucide-react';
 import { useEvents } from '../lib/queries';
 import { crore, humanize, shortDate } from '../lib/format';
 import type { CorporateEvent, EventStatus } from '../lib/types';
 import { Rise, Stagger } from '../components/motion';
-import { Chips, DemoPill, EmptyState, ErrorState, LoadingBlock, PrimaryButton, ScreenTitle, Segmented, Ticker, cx, inputCls } from '../components/ui';
+import { Chips, DemoPill, EmptyState, ErrorState, LoadingBlock, ScreenTitle, Segmented, Ticker, cx, inputCls } from '../components/ui';
 import { Pager } from './SignalsScreen';
 import { CompanyLogo } from '../components/company/CompanyLogo';
 
@@ -108,11 +108,14 @@ export const EventMemoryScreen: React.FC<Props> = ({ onOpenEvent, onCreateEvent,
     <div className="space-y-5 pt-5">
       <ScreenTitle
         title="Event Memory"
-        lede="Commitments tracked to evidenced outcomes, and compared with precedents."
         action={
-          <PrimaryButton onClick={onCreateEvent} aria-label="Record a new event" className="min-h-[38px] shrink-0 px-3 text-[12.5px]">
+          <button
+            onClick={onCreateEvent}
+            aria-label="Record a new event"
+            className="inline-flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-lg border border-forest/30 px-3 text-[13px] font-semibold text-forest transition-colors hover:bg-forest hover:text-white dark:border-emerald/30 dark:text-emerald"
+          >
             <Plus size={15} strokeWidth={2} /> Record
-          </PrimaryButton>
+          </button>
         }
       />
 
@@ -179,7 +182,6 @@ export const EventMemoryScreen: React.FC<Props> = ({ onOpenEvent, onCreateEvent,
               <section key={year} className="relative">
                 <div className="mb-3 flex items-baseline gap-3">
                   <span className="font-serif text-[22px] leading-none text-forest-dark dark:text-white">{year}</span>
-                  <span className="h-px flex-1 bg-divider dark:bg-ink-border" />
                   <span className="font-mono text-[11px] text-ink-subtle">{group.length}</span>
                 </div>
                 <Stagger as="ul" className="relative ml-[5px] space-y-0 border-l border-divider pl-5 dark:border-ink-border">
@@ -225,7 +227,7 @@ const EventRow: React.FC<{ event: CorporateEvent; onOpen: () => void }> = ({ eve
       </div>
     </div>
 
-    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-divider pt-3 text-[11.5px] dark:border-ink-border">
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11.5px]">
       <span className="text-ink-muted">
         Outlay <span className="font-mono text-ink dark:text-ink-light">{crore(e.expectedCapexCr)}</span>
       </span>
@@ -236,7 +238,6 @@ const EventRow: React.FC<{ event: CorporateEvent; onOpen: () => void }> = ({ eve
       )}
       {e.delayDays !== null && e.delayDays !== undefined && e.delayDays > 30 && <span className="font-mono font-medium text-fin-amber">+{Math.round(e.delayDays / 30.44)} mo late</span>}
       {e.isDemo && <DemoPill />}
-      <ChevronRight size={16} strokeWidth={1.75} className="ml-auto text-ink-subtle transition-transform group-hover:translate-x-0.5" />
     </div>
   </button>
 );

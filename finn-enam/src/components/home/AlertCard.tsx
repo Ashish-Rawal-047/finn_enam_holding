@@ -44,50 +44,26 @@ export const HistoricalMatchBlock: React.FC<{ match: HistoricalMatch; onView: ()
   const e = match.event;
   const delay = match.delayDays !== null ? (match.delayDays > 30 ? `${Math.round(match.delayDays / 30.44)} months late` : match.delayDays < -15 ? `${Math.round(-match.delayDays / 30.44)} months early` : 'on schedule') : null;
   return (
-    <section className="rounded-lg border border-forest/20 bg-sage/50 p-3 dark:border-emerald/25 dark:bg-emerald-subtle/40" aria-label="Historical event match">
-      <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-eyebrow text-forest dark:text-emerald">
-        <History size={13} strokeWidth={2} /> Historical event match found
-        <span className="ml-auto font-mono normal-case tracking-normal text-forest/70 dark:text-emerald/70">{Math.round(match.similarity * 100)}% match</span>
+    <section className="rounded-lg bg-sage/50 px-3 py-2.5 dark:bg-emerald-subtle/40" aria-label="Historical event match">
+      <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-eyebrow text-forest dark:text-emerald">
+        <History size={12} strokeWidth={2} /> {match.sameCompany ? 'Similar past project' : 'Comparable project'}
+        <span className="ml-auto font-mono normal-case tracking-normal text-forest/70 dark:text-emerald/70">{Math.round(match.similarity * 100)}%</span>
       </div>
-      <p className="mt-2 text-[12.5px] leading-snug text-ink dark:text-ink-light">
-        {match.sameCompany ? `${e.company.name} previously announced a similar project` : `${e.company.name} (a comparable company) announced a similar project`} in {e.announcedAt.slice(0, 4)}.
-      </p>
-      <div className="mt-2.5 rounded-lg bg-paper/80 p-3 dark:bg-ink-surface/70">
-        <div className="text-[13px] font-medium leading-snug text-ink dark:text-white">{e.title}</div>
-        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
-          <div>
-            <dt className="text-ink-subtle">Announced</dt>
-            <dd className="font-mono text-ink dark:text-ink-light">{shortDate(e.announcedAt)}</dd>
-          </div>
-          <div>
-            <dt className="text-ink-subtle">Expected completion</dt>
-            <dd className="font-mono text-ink dark:text-ink-light">{e.expectedCompletionDate ? shortDate(e.expectedCompletionDate) : 'Not disclosed'}</dd>
-          </div>
-          <div>
-            <dt className="text-ink-subtle">Actual completion</dt>
-            <dd className="font-mono text-ink dark:text-ink-light">{e.actualCompletionDate ? shortDate(e.actualCompletionDate) : 'Not reported'}</dd>
-          </div>
-          <div>
-            <dt className="text-ink-subtle">Outcome</dt>
-            <dd className={cx('font-semibold', OUTCOME_TONE[match.outcome])}>
-              {match.outcome}
-              {delay && match.outcome !== 'Delivered on time' ? <span className="font-normal text-ink-muted"> · {delay}</span> : null}
-            </dd>
-          </div>
-        </dl>
-        <p className="mt-2 line-clamp-2 text-[11.5px] italic leading-snug text-ink-muted">Original commitment: {e.originalAnnouncement}</p>
-        {match.evidence && (
-          <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-ink-muted">
-            <FileText size={11} strokeWidth={1.75} className="mt-[2px] shrink-0" /> {match.evidence.title}
-            {e.isDemo && <DemoPill className="ml-1" />}
-          </p>
-        )}
+      <div className="mt-1.5 text-[12.5px] font-medium leading-snug text-ink dark:text-white">{e.title}</div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-ink-muted">
+        <span>
+          {match.sameCompany ? '' : `${e.company.nseSymbol} · `}
+          {shortDate(e.announcedAt)}
+          {e.expectedCompletionDate ? ` → ${shortDate(e.expectedCompletionDate)}` : ''}
+        </span>
+        <span className={cx('font-semibold', OUTCOME_TONE[match.outcome])}>
+          {match.outcome}
+          {delay && match.outcome !== 'Delivered on time' ? <span className="font-normal text-ink-muted"> · {delay}</span> : null}
+        </span>
+        {e.isDemo && <DemoPill />}
       </div>
-      <button
-        onClick={onView}
-        className="group mt-2.5 inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-lg border border-forest/30 bg-paper px-3 text-[12.5px] font-semibold text-forest transition-colors hover:bg-forest hover:text-white dark:border-emerald/30 dark:bg-ink-surface dark:text-emerald"
-      >
-        View historical event <ArrowRight size={14} strokeWidth={2} className="transition-transform group-hover:translate-x-0.5" />
+      <button onClick={onView} className="group mt-1.5 inline-flex min-h-[36px] items-center gap-1 text-[12.5px] font-semibold text-forest dark:text-emerald">
+        View historical event <ArrowRight size={13} strokeWidth={2} className="transition-transform group-hover:translate-x-0.5" />
       </button>
     </section>
   );
@@ -218,13 +194,14 @@ export const AlertCard: React.FC<{
   const markRead = useMarkRead({ onFailure: failed });
   const archive = useArchiveAlert({ onFailure: failed });
   const evidence = alert.signal.evidence?.[0];
-  const chips = metricChips(alert.signal.metrics);
   const isRead = Boolean(alert.readAt);
   const archived = Boolean(alert.archived ?? alert.archivedAt);
   const hasNote = Boolean(alert.hasNote);
   const urgent = !isRead && !archived && (alert.priority === 'critical' || alert.priority === 'high');
   const headline = headlineOf(alert);
-  const detail = headline === alert.title ? alert.body : null;
+  const chips = metricChips(alert.signal.metrics);
+  // Market alerts restate their figures in prose; the chips already show them.
+  const detail = headline === alert.title && chips.length === 0 ? alert.body : null;
 
   // The change shows at once (optimistic); the confirmation appears with it. A failure rolls the
   // lists back and says so.
@@ -289,7 +266,7 @@ export const AlertCard: React.FC<{
           </header>
 
           <div className="flex items-center gap-1.5 text-[11px] text-ink-muted">
-            <span className="truncate rounded bg-cream-dark/70 px-1.5 py-px font-medium text-ink dark:bg-ink-surfaceSubtle dark:text-ink-light">{alert.signal.categoryLabel ?? alert.signal.category}</span>
+            <span className="truncate font-medium text-ink dark:text-ink-light">{alert.signal.categoryLabel ?? alert.signal.category}</span>
             <span aria-hidden>·</span>
             <time className="shrink-0 font-mono text-[10.5px]" title={`Detected ${dateTime(alert.signal.detectedAt ?? alert.createdAt)}`}>
               {relativeTime(alert.signal.occurredAt)}
@@ -331,7 +308,7 @@ export const AlertCard: React.FC<{
           {evidence && (
             <p className="flex items-start gap-1.5 text-[11.5px] leading-snug text-ink-muted">
               <FileText size={12} strokeWidth={1.75} className="mt-[2px] shrink-0 text-ink-subtle" />
-              <span className="line-clamp-2">
+              <span className="line-clamp-1">
                 <span className="font-medium text-ink dark:text-ink-light">{evidence.label}</span> — {evidence.detail}
               </span>
             </p>

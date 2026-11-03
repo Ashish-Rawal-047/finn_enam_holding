@@ -9,14 +9,13 @@ interface AppHeaderProps {
   onToggleTheme: () => void;
   unreadCount: number;
   onOpenNotifications: () => void;
-  liveMode: 'realtime' | 'polling' | 'connecting';
 }
 
 const iconBtn =
   'relative flex h-10 w-10 items-center justify-center rounded-full text-ink-muted transition-colors duration-200 hover:bg-paper hover:text-forest-dark dark:hover:bg-ink-surface dark:hover:text-white';
 
-/** Compact app bar at the top of the frame: brand, current tab, live status, notifications and theme. */
-export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, theme, onToggleTheme, unreadCount, onOpenNotifications, liveMode }) => {
+/** Compact app bar at the top of the frame: brand, current tab, notifications and theme. */
+export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, theme, onToggleTheme, unreadCount, onOpenNotifications }) => {
   const title = TABS.find((t) => t.id === activeTab)?.label ?? '';
   return (
     <header className="relative z-30 flex-none border-b border-divider/70 bg-cream/95 backdrop-blur-xl safe-pt dark:border-ink-border dark:bg-ink-bg/95">
@@ -30,16 +29,6 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ activeTab, theme, onToggle
         </div>
 
         <div className="flex items-center">
-          <span
-            className="mr-1 inline-flex items-center gap-1.5 px-1.5 text-[10.5px] font-medium text-ink-muted"
-            title={liveMode === 'realtime' ? 'Notifications stream live via Neon Realtime' : 'Notifications refresh every 30 seconds'}
-          >
-            <span className="relative flex h-1.5 w-1.5">
-              {liveMode === 'realtime' && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fin-up opacity-60" />}
-              <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${liveMode === 'realtime' ? 'bg-fin-up' : 'bg-ink-subtle'}`} />
-            </span>
-            {liveMode === 'realtime' ? 'Live' : liveMode === 'connecting' ? '…' : 'Synced'}
-          </span>
           <button onClick={onOpenNotifications} className={iconBtn} aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`}>
             <Bell size={18} strokeWidth={1.75} />
             {unreadCount > 0 && (

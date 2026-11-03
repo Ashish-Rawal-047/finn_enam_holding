@@ -52,7 +52,7 @@ export const ScreenTitle: React.FC<{ title: React.ReactNode; lede?: React.ReactN
 );
 
 export const SectionTitle: React.FC<{ title: string; meta?: React.ReactNode; action?: React.ReactNode; icon?: React.ReactNode }> = ({ title, meta, action, icon }) => (
-  <div className="flex items-end justify-between gap-3">
+  <div className={cx('flex justify-between gap-3', meta ? 'items-end' : 'items-center')}>
     <div className="min-w-0">
       <h2 className="flex items-center gap-1.5 text-[13px] font-semibold tracking-tight text-ink dark:text-white">
         {icon && <span className="text-forest dark:text-emerald">{icon}</span>}
@@ -97,13 +97,11 @@ export const Metric: React.FC<{
   </div>
 );
 
-export const DemoPill: React.FC<{ className?: string; label?: string }> = ({ className, label = 'Demo data' }) => (
+/** Quiet provenance tag: this item is demonstration data, not live market or filing data. */
+export const DemoPill: React.FC<{ className?: string; label?: string }> = ({ className, label = 'Demo' }) => (
   <span
     title="Demonstration data — not live market or filing data"
-    className={cx(
-      'inline-flex items-center gap-1 rounded-full border border-fin-amber/30 bg-fin-amberBg/80 dark:bg-fin-amberBgDark px-2 py-px text-[10px] font-medium text-fin-amber whitespace-nowrap',
-      className,
-    )}
+    className={cx('inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium uppercase tracking-[0.06em] text-fin-amber', className)}
   >
     <FlaskConical size={10} strokeWidth={2} /> {label}
   </span>
@@ -171,8 +169,8 @@ export const LoadingBlock: React.FC<{ rows?: number }> = ({ rows = 3 }) => (
 export const Spinner: React.FC<{ size?: number; className?: string }> = ({ size = 16, className }) => <Loader2 size={size} className={cx('animate-spin', className)} />;
 
 export const EmptyState: React.FC<{ title: string; body?: React.ReactNode; action?: React.ReactNode; icon?: React.ReactNode }> = ({ title, body, action, icon }) => (
-  <div className="flex flex-col items-center gap-2 rounded-card border border-dashed border-divider dark:border-ink-border px-6 py-10 text-center">
-    <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-cream-dark dark:bg-ink-surfaceSubtle text-ink-muted">{icon ?? <Inbox size={ICON.lg} strokeWidth={ICON.stroke} />}</div>
+  <div className="flex flex-col items-center gap-2 px-6 py-8 text-center">
+    <div className="mb-0.5 text-ink-subtle">{icon ?? <Inbox size={ICON.lg} strokeWidth={ICON.stroke} />}</div>
     <p className="text-sm font-semibold text-ink dark:text-white">{title}</p>
     {body && <div className="max-w-sm text-[12.5px] leading-relaxed text-ink-muted">{body}</div>}
     {action && <div className="pt-2">{action}</div>}

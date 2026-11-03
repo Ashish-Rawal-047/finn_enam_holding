@@ -33,7 +33,6 @@ export const AlertList: React.FC<{
     <section className="space-y-4" aria-label="Portfolio Alerts">
       <SectionTitle
         title="Portfolio Alerts"
-        meta="Ranked by materiality — read alerts stay below unread ones"
         action={
           <TextButton onClick={onOpenHistory}>
             <History size={14} strokeWidth={1.75} /> History
@@ -68,19 +67,13 @@ export const AlertList: React.FC<{
       ) : !data ? (
         <LoadingBlock rows={3} />
       ) : data.items.length === 0 && filter === 'favourites' ? (
-        <div className="flex flex-col items-center rounded-card border border-dashed border-divider px-6 py-10 text-center dark:border-ink-border">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-sage text-forest dark:bg-emerald-subtle dark:text-emerald">
-            <Star size={18} strokeWidth={1.75} />
-          </span>
-          <p className="mt-3 font-serif text-[19px] leading-tight text-forest-dark dark:text-white">No favourite alerts yet.</p>
-          <p className="mt-1 max-w-xs text-[12.5px] leading-relaxed text-ink-muted">Bookmark important developments to access them quickly.</p>
-        </div>
+        <EmptyState title="No favourite alerts yet." body="Bookmark important developments to access them quickly." icon={<Star size={18} strokeWidth={1.75} />} />
       ) : data.items.length === 0 && filter === 'archived' ? (
         <EmptyState title="No archived alerts" body="Archived alerts will appear here." icon={<Archive size={18} strokeWidth={1.75} />} />
       ) : data.items.length === 0 ? (
         <EmptyState
           title={filter === 'unread' ? 'You’re all caught up' : filter === 'read' ? 'No read alerts yet' : 'No alerts yet'}
-          body={filter === 'all' ? 'No signals on your portfolio have crossed your thresholds. Adjust sensitivity in Settings → Alerts.' : undefined}
+          body={filter === 'all' ? 'Nothing has crossed your thresholds.' : undefined}
         />
       ) : (
         <>
@@ -91,9 +84,7 @@ export const AlertList: React.FC<{
                 return (
                   <motion.li key={a.id} data-alert-id={a.id} layout="position" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.35, ease: EASE_OUT }}>
                     {firstRead && (
-                      <div className="mb-3 mt-2 flex items-center gap-3 text-2xs font-medium uppercase tracking-eyebrow text-ink-subtle">
-                        <span className="h-px flex-1 bg-divider dark:bg-ink-border" /> Read <span className="h-px flex-1 bg-divider dark:bg-ink-border" />
-                      </div>
+                      <div className="mb-2.5 mt-5 text-2xs font-medium uppercase tracking-eyebrow text-ink-subtle">Read</div>
                     )}
                     <AlertCard
                       alert={a}
@@ -114,7 +105,6 @@ export const AlertList: React.FC<{
           )}
         </>
       )}
-      {filter === 'archived' && (data?.items.length ?? 0) > 0 && <p className="text-center text-[11.5px] text-ink-muted">Swipe left or use Restore to move an alert back to the feed.</p>}
       <NoteSheet alert={noteFor} onClose={() => setNoteFor(null)} />
     </section>
   );

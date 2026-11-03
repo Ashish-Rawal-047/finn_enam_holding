@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Quote as QuoteMark } from 'lucide-react';
 import { quoteForThisLoad } from '../../content/quotes';
 import { EASE_OUT } from '../motion';
 
@@ -18,9 +17,8 @@ export const QuoteBlock: React.FC = () => {
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.5, ease: EASE_OUT }}
         >
-          <QuoteMark size={14} strokeWidth={1.75} className="mb-2 rotate-180 text-forest/60 dark:text-emerald/70" aria-hidden />
           <blockquote className="font-serif text-[19px] leading-[1.45] text-forest-dark dark:text-ink-light">{quote.text}</blockquote>
-          <figcaption className="mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px]">
+          <figcaption className="mt-2.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[12px]">
             <span className="font-semibold tracking-tight text-ink dark:text-white">{quote.author}</span>
             <span className="text-ink-muted">{quote.source}</span>
           </figcaption>

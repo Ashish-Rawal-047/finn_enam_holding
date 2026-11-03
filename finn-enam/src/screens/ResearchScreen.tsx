@@ -90,14 +90,14 @@ export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, on
 
   return (
     <div className="space-y-5 pt-5">
-      {!companyId && <ScreenTitle title="Research" lede="Any NSE or BSE company; every figure labelled by its source." />}
+      {!companyId && <ScreenTitle title="Research" />}
 
       {/* Search */}
       <div className="relative">
         <Search size={16} strokeWidth={1.75} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-subtle" />
         <input
           className={cx(inputCls, 'pl-10 pr-10')}
-          placeholder="Company name, NSE symbol, BSE code or Yahoo ticker (e.g. ITC, TRENT.NS)"
+          placeholder="Search companies"
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           aria-label="Search companies"
@@ -142,7 +142,7 @@ export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, on
                             <div className="truncate text-xs text-ink-muted">{c.name}</div>
                           </div>
                         </div>
-                        {c.isDemo ? <DemoPill /> : <span className="text-[10.5px] text-ink-subtle">In FINN</span>}
+                        {c.isDemo && <DemoPill />}
                       </button>
                     </li>
                   ))}

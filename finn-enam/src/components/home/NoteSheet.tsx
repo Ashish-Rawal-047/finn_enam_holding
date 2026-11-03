@@ -1,6 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Lock, Users } from 'lucide-react';
-import { useAuth } from '../../auth/AuthContext';
 import { useAlertNote, useNoteMutations } from '../../lib/queries';
 import { dateTime } from '../../lib/format';
 import type { NotificationItem } from '../../lib/types';
@@ -15,11 +13,9 @@ const MAX = 4000;
 /**
  * Personal research note on one alert, in a bottom sheet: one editable note per user per alert,
  * saved to the server (so it follows the account across devices), deleted only after a
- * confirmation. On the shared reviewer account everyone using that login sees the same notes,
- * and the sheet says so.
+ * confirmation. Notes belong to the account: everyone signed in to a shared account sees them.
  */
 export const NoteSheet: React.FC<{ alert: NotificationItem | null; onClose: () => void }> = ({ alert, onClose }) => {
-  const { user } = useAuth();
   const toast = useToast();
   const note = useAlertNote(alert?.id ?? null);
   const { save, remove } = useNoteMutations(alert?.id ?? null);
@@ -118,7 +114,7 @@ export const NoteSheet: React.FC<{ alert: NotificationItem | null; onClose: () =
               />
             </label>
             <div className="flex items-center justify-between gap-2 text-[11px] text-ink-muted">
-              <span>{existing ? `Last updated ${dateTime(existing.updatedAt)}` : 'Not saved yet'}</span>
+              <span>{existing ? `Updated ${dateTime(existing.updatedAt)}` : ''}</span>
               <span className="font-mono">
                 {text.length.toLocaleString('en-IN')}/{MAX.toLocaleString('en-IN')}
               </span>
@@ -126,17 +122,6 @@ export const NoteSheet: React.FC<{ alert: NotificationItem | null; onClose: () =
           </>
         )}
         {(save.isError || remove.isError) && <ErrorState error={save.error ?? remove.error} />}
-        <p className="flex items-start gap-1.5 text-[11.5px] leading-snug text-ink-muted">
-          {user?.isDemoAccount ? (
-            <>
-              <Users size={13} className="mt-px shrink-0" /> This is the shared reviewer account: everyone signed in with it sees the same notes.
-            </>
-          ) : (
-            <>
-              <Lock size={13} className="mt-px shrink-0" /> Only you can see this note. It stays with the alert when you archive or restore it.
-            </>
-          )}
-        </p>
       </div>
     </Drawer>
   );

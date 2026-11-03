@@ -50,7 +50,7 @@ export const SignalsScreen: React.FC<Props> = ({ onOpenCompany, onInspectSignal,
 
   return (
     <div className="space-y-5 pt-5">
-      <ScreenTitle title="Signals" lede="Price, volume against the 20-session norm, and raised signals." />
+      <ScreenTitle title="Signals" />
       <Segmented<View>
         ariaLabel="Signals view"
         value={view}
@@ -100,7 +100,7 @@ export const SignalsScreen: React.FC<Props> = ({ onOpenCompany, onInspectSignal,
           )}
           {portfolio.data?.some((h) => h.quote?.isDemo) && (
             <p className="flex flex-wrap items-center gap-2 text-[11.5px] text-ink-muted">
-              <DemoPill /> Prices are a synthetic demonstration series, not live NSE quotes.
+              <DemoPill /> Some prices are demonstration data.
             </p>
           )}
         </div>
@@ -168,7 +168,6 @@ const SignalFeed: React.FC<{ onInspectSignal: (id: string) => void }> = ({ onIns
           { id: 'historical_precedent', label: 'Precedents' },
         ]}
       />
-      <p className="text-[11.5px] text-ink-muted">Only signals that pass your alert thresholds are shown. Select one to inspect its evidence.</p>
       {signals.isLoading ? (
         <LoadingBlock rows={5} />
       ) : signals.isError ? (

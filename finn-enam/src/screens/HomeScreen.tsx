@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, CalendarClock } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
+import { useAuth } from '../auth/AuthContext';
 import { useAddDemoPortfolio, useEvents, useHome, usePortfolio } from '../lib/queries';
 import { greetingFor, humanize, shortDate } from '../lib/format';
 import { QuoteBlock } from '../components/home/QuoteBlock';
@@ -23,6 +24,7 @@ interface Props {
 }
 
 export const HomeScreen: React.FC<Props> = ({ onInspectSignal, onOpenNotifications, onGoToSettings, onOpenCompany, onOpenEvent, onGoToMemory, onViewHistoricalEvent }) => {
+  const { user } = useAuth();
   const home = useHome();
   const portfolio = usePortfolio();
   const events = useEvents({ scope: 'portfolio', page: 1 });
@@ -43,7 +45,8 @@ export const HomeScreen: React.FC<Props> = ({ onInspectSignal, onOpenNotificatio
           <Eyebrow>{dateLine}</Eyebrow>
           <h1 className="font-serif text-[30px] leading-[1.08] text-forest-dark dark:text-white">
             {greetingFor(now)}
-            {home.data?.greetingName ? (
+            {/* The shared demo account is greeted without a name. */}
+            {home.data?.greetingName && !user?.isDemoAccount ? (
               <>
                 , <span className="italic text-forest dark:text-emerald">{home.data.greetingName}</span>.
               </>
@@ -92,7 +95,6 @@ export const HomeScreen: React.FC<Props> = ({ onInspectSignal, onOpenNotificatio
             <section className="space-y-4">
               <SectionTitle
                 title="Company developments"
-                meta="Open commitments on your portfolio, nearest deadline first"
                 action={
                   <TextButton onClick={onGoToMemory}>
                     Event Memory <ArrowRight size={14} strokeWidth={1.75} />
@@ -103,10 +105,9 @@ export const HomeScreen: React.FC<Props> = ({ onInspectSignal, onOpenNotificatio
                 {upcoming.map((e) => (
                   <li key={e.id}>
                     <button onClick={() => onOpenEvent(e.id)} className="flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors hover:bg-cream-light dark:hover:bg-ink-surfaceSubtle">
-                      <div className="flex w-14 shrink-0 flex-col items-center rounded-lg border border-divider py-1.5 dark:border-ink-border">
-                        <CalendarClock size={13} strokeWidth={1.75} className="text-ink-subtle" />
-                        <span className="mt-0.5 font-mono text-[10.5px] text-ink dark:text-ink-light">{e.expectedCompletionDate ? shortDate(e.expectedCompletionDate).replace(/^\d+ /, '') : 'n/d'}</span>
-                      </div>
+                      <span className="w-[60px] shrink-0 font-mono text-[11px] leading-tight text-ink-muted" title="Expected completion">
+                        {e.expectedCompletionDate ? shortDate(e.expectedCompletionDate).replace(/^\d+ /, '') : 'No date'}
+                      </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <CompanyLogo {...e.company} size="xs" />

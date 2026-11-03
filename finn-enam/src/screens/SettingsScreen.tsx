@@ -99,15 +99,8 @@ const SettingsHome: React.FC<{ theme: 'light' | 'dark'; onSetTheme: (t: 'light' 
           <span className="block truncate text-[14.5px] font-medium text-ink dark:text-white">{name || 'Your profile'}</span>
           <span className="block truncate text-[12px] text-ink-muted">{user?.email}</span>
         </span>
-        {user?.isDemoAccount && <span className="shrink-0 rounded-full border border-forest/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-forest dark:border-emerald/30 dark:text-emerald">Demo</span>}
         <ChevronRight size={17} strokeWidth={1.75} className="shrink-0 text-ink-subtle" />
       </button>
-
-      {user?.isDemoAccount && (
-        <p className="px-1 text-[11.5px] leading-relaxed text-ink-muted">
-          Shared reviewer account with demonstration data. Portfolio, watchlists, alert settings and read state can change; profile, password, other sessions and shared Event Memory records are read-only.
-        </p>
-      )}
 
       <SettingsGroup title="Portfolio">
         <SettingsRow icon={<Building2 size={17} />} label="Tracked companies" value={portfolio.data ? String(portfolio.data.length) : undefined} onClick={() => onOpen('companies')} />
@@ -254,7 +247,7 @@ const PortfolioSection: React.FC<{ onOpenCompany: (id: string) => void }> = ({ o
   return (
     <div className="space-y-4">
       <Panel className="space-y-3">
-        <SectionTitle title="Add companies" meta="Search, or type an NSE symbol / BSE code" />
+        <SectionTitle title="Add companies" />
         <CompanyPicker excludeIds={held} onPick={(c) => add.mutate({ companyId: c.id })} onPickSymbol={(symbol) => add.mutate({ symbol })} />
         {add.isPending && (
           <p className="flex items-center gap-1.5 text-xs text-ink-muted">
@@ -323,7 +316,6 @@ const WatchlistsPanel: React.FC = () => {
 
   return (
     <Panel className="space-y-3">
-      <p className="text-[12px] text-ink-muted">Group tracked companies. Adding to a watchlist also tracks the company.</p>
       <form
         className="flex gap-2"
         onSubmit={(e) => {
@@ -446,7 +438,7 @@ const AlertsSection: React.FC<{ part: 'triggers' | 'notifications' }> = ({ part 
       {part === 'triggers' && (
         <>
           <Panel className="space-y-5">
-            <SectionTitle title="Market triggers" meta="Evaluated on every end-of-day session for your tracked companies" />
+            <SectionTitle title="Market triggers" />
             <Slider
               label="Price movement threshold"
               value={draft.priceMoveThresholdPct}
@@ -631,7 +623,6 @@ const SystemStatus: React.FC = () => {
   const health = useHealth();
   return (
     <Panel className="space-y-2">
-      <p className="text-[12px] text-ink-muted">What powers the data you see.</p>
       {health.data ? (
         <ul className="space-y-1.5 text-xs">
           <StatusRow label="Database (Neon)" ok={health.data.database.connected} detail={health.data.database.connected ? `${health.data.database.latencyMs} ms` : 'unreachable'} />
