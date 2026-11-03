@@ -2,7 +2,7 @@
  * Environment loading and validation.
  *
  * Neon's `neon deploy` / `neon env pull` write DATABASE_URL, DATABASE_URL_UNPOOLED,
- * NEON_AI_GATEWAY_* and NEON_REALTIME_* into the repo-root `.env.local` (or `.env`).
+ * NEON_REALTIME_* into the repo-root `.env.local` (or `.env`).
  * Backend-only secrets live in `backend/.env`. Values are validated once at startup;
  * nothing here is ever logged.
  */
@@ -46,10 +46,9 @@ const schema = z
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
 
     // AI provider (optional: AI features report "not configured" when absent).
-    //   neon               – Neon AI Gateway (NEON_AI_GATEWAY_TOKEN / _BASE_URL from `neon deploy`)
-    //   anthropic | openai | google – direct provider with AI_API_KEY
+    //   anthropic | google – direct provider with AI_API_KEY (FINN runs on Google Gemini)
     //   openai-compatible  – any OpenAI-compatible endpoint at AI_BASE_URL with AI_API_KEY
-    AI_PROVIDER: blankAsUnset(z.enum(['neon', 'anthropic', 'openai', 'google', 'openai-compatible']).optional()),
+    AI_PROVIDER: blankAsUnset(z.enum(['anthropic', 'google', 'openai-compatible']).optional()),
     AI_API_KEY: optionalString,
     AI_BASE_URL: optionalString,
     AI_MODEL: optionalString, // fast model: extraction, classification
@@ -63,8 +62,6 @@ const schema = z
     // Optional USD prices per million tokens, for cost tracking. Unset = cost not reported.
     AI_PRICE_INPUT_PER_MTOK: blankAsUnset(z.coerce.number().nonnegative().optional()),
     AI_PRICE_OUTPUT_PER_MTOK: blankAsUnset(z.coerce.number().nonnegative().optional()),
-    NEON_AI_GATEWAY_TOKEN: optionalString,
-    NEON_AI_GATEWAY_BASE_URL: optionalString,
 
     // Neon Realtime (optional: notifications fall back to polling)
     NEON_REALTIME_URL: optionalString,
@@ -129,11 +126,9 @@ export const env = load();
 
 /** Resolved AI provider, or null when AI is not usable with the current configuration. */
 function resolveAiProvider(): { provider: NonNullable<Env['AI_PROVIDER']>; reason?: undefined } | { provider: null; reason: string } {
-  const provider = env.AI_PROVIDER ?? (env.NEON_AI_GATEWAY_TOKEN && env.NEON_AI_GATEWAY_BASE_URL ? 'neon' : undefined);
+  const provider = env.AI_PROVIDER;
   if (!provider) return { provider: null, reason: env.AI_API_KEY ? 'AI_API_KEY is set but AI_PROVIDER is not.' : 'No AI provider configured.' };
-  if (provider === 'neon') {
-    return env.NEON_AI_GATEWAY_TOKEN && env.NEON_AI_GATEWAY_BASE_URL ? { provider } : { provider: null, reason: 'Neon AI Gateway credentials are missing.' };
-  }
+
   if (!env.AI_API_KEY) return { provider: null, reason: `AI_PROVIDER=${provider} needs AI_API_KEY.` };
   if (!env.AI_MODEL) return { provider: null, reason: `AI_PROVIDER=${provider} needs AI_MODEL (FINN does not guess model names).` };
   if (provider === 'openai-compatible' && !env.AI_BASE_URL) return { provider: null, reason: 'AI_PROVIDER=openai-compatible needs AI_BASE_URL.' };

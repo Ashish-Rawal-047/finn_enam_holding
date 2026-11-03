@@ -116,7 +116,7 @@ Then register it. No scraping.
 
 ## AI service layer
 
-`backend/src/ai/gateway.ts` uses `@neon/ai-sdk-provider` with AI SDK v6 `generateText({ output: Output.object(schema) })`. Every call:
+`backend/src/ai/gateway.ts` uses Google Gemini (`@ai-sdk/google`) with AI SDK v6 `generateText({ output: Output.object(schema) })`. Every call:
 
 * receives a numbered evidence pack (E1…En)
 * must return zod-validated JSON

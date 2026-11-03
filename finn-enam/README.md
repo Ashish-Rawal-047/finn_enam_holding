@@ -116,7 +116,7 @@ NODE_ENV=production npm start    # API serves the built SPA from ./dist on the s
   * `DATABASE_URL` (pooled)
   * `DATABASE_URL_UNPOOLED` (for migrations)
   * `JWT_SECRET` and `JWT_REFRESH_SECRET`
-  * `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL` (or `NEON_AI_GATEWAY_*`)
+  * `AI_PROVIDER=google`, `AI_API_KEY` (Gemini key), `AI_MODEL`
   * `NEON_REALTIME_*`
   * `CORS_ORIGINS`
   * optional `LOGO_DEV_TOKEN` (higher-resolution company logos)

@@ -170,3 +170,33 @@ test('event comparisons read as prose, not evidence ids', () => {
     "The new announcement and this precedent are both PLI plants; the new announcement's capex exceeds this precedent's. Another precedent differs.",
   );
 });
+
+test('an exhausted Gemini quota gives a clear message with the reset time, and is not retried', async () => {
+  let calls = 0;
+  const exhausted = new MockLanguageModelV3({
+    doGenerate: async () => {
+      calls++;
+      throw apiError(429, '{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier","retryDelay":"7200s"}');
+    },
+  });
+  __setModelsForTest({ fast: exhausted, reasoning: exhausted, embedding: null, label: 'mock' });
+  const check = (e: unknown) => {
+    assert.ok(e instanceof AiError && e.code === 'quota_exhausted');
+    assert.match(e.userMessage, /free daily AI allowance \(Google Gemini\) is used up/);
+    assert.match(e.userMessage, /It resets around \d{1,2} \w{3}, \d{1,2}:\d{2} [ap]m IST\./);
+    assert.match(e.userMessage, /saved research are unaffected/);
+    return true;
+  };
+  await assert.rejects(() => generateStructuredWithMeta({ schema: bullSchema, task: 't', evidence, tier: 'fast' }), check);
+  // Later requests are refused locally until the reset: no further calls to Gemini.
+  await assert.rejects(() => generateStructuredWithMeta({ schema: bullSchema, task: 't', evidence, tier: 'fast' }), check);
+  assert.equal(calls, 1);
+  __setModelsForTest(null);
+});
+
+test('without a reset time from Google, the quota message never states a guessed time', () => {
+  const e = classifyAiError(apiError(429, '{"quotaId":"GenerateRequestsPerDayPerProjectPerModel-FreeTier"}'));
+  assert.equal(e.code, 'quota_exhausted');
+  assert.match(e.userMessage, /It resets daily\./);
+  assert.doesNotMatch(e.userMessage, /IST/);
+});

@@ -796,10 +796,15 @@ export async function generateReport(
       // facts-only report. The job fails with a retryable message and the previous report stays.
       if (errors.length === results.length) {
         const previous = await db.query.researchReports.findFirst({ where: and(eq(researchReports.companyId, companyId), ne(researchReports.status, 'failed')), columns: { id: true } });
-        const reason = first.replace(/\s*Please try again[^.]*\.?$/i, '').replace(/\.$/, '');
-        if (previous) throw new Error(`${reason}. Your previous research is unchanged; please try again in a few minutes.`);
+        if (previous) {
+          // An exhausted daily quota says when it resets; other failures are worth retrying soon.
+          const quota = errors.find((e): e is AiError => e instanceof AiError && e.code === 'quota_exhausted');
+          if (quota) throw new Error(quota.userMessage.replace('Reported figures, charts and saved research are unaffected.', 'Reported figures and charts are unaffected, and your previous research is unchanged.'));
+          const reason = first.replace(/\s*Please try again[^.]*\.?$/i, '').replace(/\.$/, '');
+          throw new Error(`${reason}. Your previous research is unchanged; please try again in a few minutes.`);
+        }
       }
-      limitations.push(`AI analysis was incomplete: ${errors.length} of ${results.length} analysis groups failed (${first}). Reported facts and calculated metrics are unaffected.`);
+      limitations.push(`AI analysis was incomplete: ${errors.length} of ${results.length} analysis groups failed. ${first}`.replace(/\s*Reported figures, charts and saved research are unaffected\.$/, '') + ' Reported facts and calculated metrics are unaffected.');
     }
     if (fallbackUsed) limitations.push(`The reasoning model was unavailable (quota, rate limit or overload); the analysis used the faster model (${[...modelsUsed].join(', ')}), which is less thorough.`);
     if (dropped > 0) limitations.push(`${dropped} AI point(s) were discarded because their citations or figures could not be verified against the evidence.`);

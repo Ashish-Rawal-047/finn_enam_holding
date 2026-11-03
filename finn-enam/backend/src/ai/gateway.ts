@@ -1,6 +1,7 @@
 /**
  * AI service layer. Provider and models come from configuration (see config/env.ts):
- * Neon AI Gateway, Anthropic, OpenAI, Google (Gemini) or any OpenAI-compatible endpoint.
+ * Google Gemini (FINN's provider), with Anthropic or an OpenAI-compatible endpoint available as
+ * alternative configurations. No paid fallback provider is used.
  *
  * Rules every caller relies on:
  *  - Output is always structured JSON validated against a zod schema.
@@ -13,10 +14,8 @@
  *    bounded exponential backoff. Nothing is ever substituted for a failed response.
  *  - Every provider call is recorded in ai_usage (tokens, latency, outcome; never prompts or keys).
  */
-import { createNeon } from '@neon/ai-sdk-provider';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { APICallError, embedMany, generateText, NoObjectGeneratedError, Output, RetryError, type EmbeddingModel, type LanguageModel } from 'ai';
 import { ZodError, type z } from 'zod';
@@ -43,7 +42,7 @@ export type AiErrorCode =
 const USER_MESSAGES: Record<AiErrorCode, string> = {
   not_configured: 'AI is not configured on the server.',
   invalid_credentials: 'The AI provider rejected the configured API key.',
-  quota_exhausted: 'The AI provider quota or credits for this key are exhausted.',
+  quota_exhausted: 'FINN’s free daily AI allowance (Google Gemini) is used up.',
   rate_limited: 'The AI provider is rate-limiting requests. Please try again shortly.',
   overloaded: 'The AI provider is temporarily overloaded.',
   timeout: 'The AI provider did not respond in time.',
@@ -55,8 +54,14 @@ const USER_MESSAGES: Record<AiErrorCode, string> = {
 
 const RETRYABLE = new Set<AiErrorCode>(['rate_limited', 'overloaded', 'timeout', 'network', 'malformed_response']);
 
+/** "4 Nov, 1:30 pm IST" — FINN's users are in India. */
+const istTime = (d: Date) =>
+  `${d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' })}, ${d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true }).toLowerCase()} IST`;
+
 export class AiError extends Error {
   readonly retryable: boolean;
+  /** For an exhausted quota: when the provider says it resets (null when it did not say). */
+  resetsAt: Date | null = null;
   constructor(
     public readonly code: AiErrorCode,
     public readonly detail: string,
@@ -66,6 +71,10 @@ export class AiError extends Error {
     this.retryable = RETRYABLE.has(code);
   }
   get userMessage() {
+    if (this.code === 'quota_exhausted') {
+      const when = this.resetsAt ? ` It resets around ${istTime(this.resetsAt)}.` : ' It resets daily.';
+      return `${USER_MESSAGES.quota_exhausted}${when} Reported figures, charts and saved research are unaffected.`;
+    }
     return USER_MESSAGES[this.code];
   }
 }
@@ -140,19 +149,9 @@ function buildModels(): Models | null {
   const fastId = env.AI_MODEL;
   const reasoningId = env.AI_REASONING_MODEL ?? env.AI_MODEL;
   switch (ai.provider) {
-    case 'neon': {
-      const neon = createNeon({ baseURL: env.NEON_AI_GATEWAY_BASE_URL, apiKey: env.NEON_AI_GATEWAY_TOKEN });
-      const f = fastId ?? 'claude-haiku-4-5';
-      const r = reasoningId ?? 'claude-sonnet-4-6';
-      return { fast: neon(f), reasoning: neon(r), embedding: neon.embeddingModel(env.AI_EMBEDDING_MODEL ?? 'qwen3-embedding-0-6b'), label: `Neon AI Gateway · ${r}`, provider: 'neon', fastId: f, reasoningId: r };
-    }
     case 'anthropic': {
       const p = createAnthropic({ apiKey: env.AI_API_KEY, ...(env.AI_BASE_URL ? { baseURL: env.AI_BASE_URL } : {}) });
       return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: null, label: `Anthropic · ${reasoningId}`, provider: 'anthropic', fastId: fastId!, reasoningId: reasoningId! };
-    }
-    case 'openai': {
-      const p = createOpenAI({ apiKey: env.AI_API_KEY, ...(env.AI_BASE_URL ? { baseURL: env.AI_BASE_URL } : {}) });
-      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: env.AI_EMBEDDING_MODEL ? p.embedding(env.AI_EMBEDDING_MODEL) : null, label: `OpenAI · ${reasoningId}`, provider: 'openai', fastId: fastId!, reasoningId: reasoningId! };
     }
     case 'google': {
       const p = createGoogleGenerativeAI({ apiKey: env.AI_API_KEY, ...(env.AI_BASE_URL ? { baseURL: env.AI_BASE_URL } : {}) });
@@ -174,6 +173,7 @@ export function __setModelsForTest(m: { fast: LanguageModel; reasoning: Language
   models = m ? { ...m, provider: 'test', fastId: 'mock-fast', reasoningId: 'mock-reasoning' } : null;
   probe = null;
   quotaBlockedUntil.clear();
+  quotaResetKnown.clear();
 }
 
 export const aiStatus = () => ({
@@ -266,6 +266,8 @@ const MAX_WAIT_MS = 20_000;
  * straight to the fallback instead of failing first.
  */
 const quotaBlockedUntil = new Map<string, number>();
+/** Models whose block time came from the provider (rather than FINN's 15-minute default). */
+const quotaResetKnown = new Set<string>();
 const blockedUntil = (modelId: string) => {
   const until = quotaBlockedUntil.get(modelId);
   return until && until > Date.now() ? until : null;
@@ -311,7 +313,12 @@ export async function generateStructuredWithMeta<T extends z.ZodType>(opts: {
     let attempts = 0;
     const started = performance.now();
     const until = blockedUntil(modelId);
-    if (until) throw new AiError('quota_exhausted', `${modelId} quota resets at ${new Date(until).toISOString()}`);
+    if (until) {
+      // Exhausted quota: no request is sent until it resets.
+      const blocked = new AiError('quota_exhausted', `${modelId} quota resets at ${new Date(until).toISOString()}`);
+      if (quotaResetKnown.has(modelId)) blocked.resetsAt = new Date(until);
+      throw blocked;
+    }
     for (;;) {
       attempts++;
       try {
@@ -333,7 +340,14 @@ export async function generateStructuredWithMeta<T extends z.ZodType>(opts: {
       } catch (raw) {
         const err = classifyAiError(raw);
         const wait = Math.min(err.retryAfterMs ?? 1000 * 2 ** (attempts - 1) + Math.random() * 400, MAX_WAIT_MS);
-        if (err.code === 'quota_exhausted') quotaBlockedUntil.set(modelId, Date.now() + Math.min(err.retryAfterMs ?? 15 * 60_000, 24 * 3600_000));
+        if (err.code === 'quota_exhausted') {
+          const until = Date.now() + Math.min(err.retryAfterMs ?? 15 * 60_000, 24 * 3600_000);
+          quotaBlockedUntil.set(modelId, until);
+          if (err.retryAfterMs !== null) {
+            quotaResetKnown.add(modelId);
+            err.resetsAt = new Date(until);
+          } else quotaResetKnown.delete(modelId);
+        }
         if (!err.retryable || attempts >= maxAttempts || (err.retryAfterMs ?? 0) > MAX_WAIT_MS) {
           console.warn(`[ai] ${meta.feature}: ${err.code} after ${attempts} attempt(s) on ${modelId}: ${err.detail}`);
           recordUsage({ meta, model: modelId, tier: which, status: 'error', errorCode: err.code, attempts, latencyMs: Math.round(performance.now() - started) });
@@ -375,9 +389,7 @@ export async function embedTexts(texts: string[], meta: CallMeta = { feature: 'e
       model: models.embedding,
       values: texts,
       providerOptions: {
-        neon: { dimensions: env.AI_EMBEDDING_DIMENSIONS },
         google: { outputDimensionality: env.AI_EMBEDDING_DIMENSIONS, taskType: 'SEMANTIC_SIMILARITY' },
-        openai: { dimensions: env.AI_EMBEDDING_DIMENSIONS },
       },
       maxParallelCalls: 1,
       maxRetries: env.AI_MAX_RETRIES,
