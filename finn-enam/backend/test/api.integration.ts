@@ -735,6 +735,53 @@ test('research financials: charts and comparisons match the stored statements; A
   assert.equal((await call(`/research/${id}/ask`, { method: 'POST', client: alice, body: { question: 'q'.repeat(301) } })).status, 400);
 });
 
+test('background research jobs: one per user and company, owner-only, listed while active, watchdog for stalled jobs', async () => {
+  const { pool } = await import('../src/db/client.js');
+  const { rows } = await pool.query(`select c.id from companies c where exists (select 1 from financial_statements s where s.company_id = c.id) order by c.name limit 1`);
+  if (!rows.length) return;
+  const id = rows[0].id as string;
+  // A stalled job (its worker died): no heartbeat for longer than the watchdog limit.
+  const me = (await call('/auth/me', { client: alice })).json.user.id as string;
+  const stalled = (
+    await pool.query(`insert into research_jobs (company_id, requested_by, status, stage, mode, updated_at) values ($1, $2, 'running', 'ai', 'generate', now() - interval '20 minutes') returning id`, [id, me])
+  ).rows[0].id as string;
+
+  const first = await call(`/research/${id}/generate`, { method: 'POST', client: alice, body: {} });
+  assert.equal(first.status, 202, JSON.stringify(first.json));
+  assert.notEqual(first.json.job.id, stalled, 'a stalled job is not joined');
+  const reaped = (await pool.query(`select status, error from research_jobs where id = $1`, [stalled])).rows[0];
+  assert.equal(reaped.status, 'failed');
+  assert.match(reaped.error, /stopped responding/);
+
+  // A second request while the first is active joins it, whatever the mode.
+  const second = await call(`/research/${id}/refresh`, { method: 'POST', client: alice, body: {} });
+  assert.equal(second.status, 202);
+  assert.equal(second.json.job.id, first.json.job.id);
+  assert.equal(second.json.deduplicated, true);
+
+  // Owner-only.
+  assert.equal((await call(`/research/jobs/${first.json.job.id}`, { client: bob })).status, 404);
+  assert.equal((await call('/research/jobs/active', { client: bob })).json.jobs.some((j: { id: string }) => j.id === first.json.job.id), false);
+
+  // Visible while active (app-wide list and on the company), and as the latest job afterwards.
+  let job = first.json.job;
+  const active = (await call('/research/jobs/active', { client: alice })).json.jobs;
+  if (['queued', 'running'].includes((await call(`/research/jobs/${job.id}`, { client: alice })).json.job.status)) {
+    assert.ok(active.some((j: { id: string; company: { id: string } }) => j.id === job.id && j.company.id === id), 'listed while active');
+  }
+  for (let i = 0; i < 240 && !['succeeded', 'failed'].includes(job.status); i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    job = (await call(`/research/jobs/${job.id}`, { client: alice })).json.job;
+  }
+  assert.ok(['succeeded', 'failed'].includes(job.status));
+  const research = (await call(`/research/${id}`, { client: alice })).json;
+  assert.equal(research.activeJob, null);
+  assert.equal(research.latestJob.id, job.id);
+  assert.equal(research.latestJob.status, job.status);
+  assert.equal('partial' in research.latestJob, false, 'summary only');
+  assert.equal((await call('/research/jobs/active', { client: alice })).json.jobs.some((j: { id: string }) => j.id === job.id), false);
+});
+
 test('logout revokes the refresh session', async () => {
   const login = await call('/auth/login', { method: 'POST', body: { email: bob.email, password: 'Str0ngPassw0rd!' } });
   const cookie = cookieOf(login.setCookie);

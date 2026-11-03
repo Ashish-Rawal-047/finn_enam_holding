@@ -16,7 +16,7 @@
  * Sections without support are returned as `unavailable` with the reason.
  */
 import { createHash } from 'node:crypto';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { features } from '../config/env.js';
 import { db } from '../db/client.js';
@@ -792,6 +792,13 @@ export async function generateReport(
     if (errors.length < results.length) generator = `${generator}+${(aiLabel() ?? '').split(' · ')[0]} · ${[...modelsUsed].join(', ')}`;
     if (errors.length) {
       const first = errors[0] instanceof AiError ? (errors[0] as AiError).userMessage : errors[0].message.slice(0, 200);
+      // Every AI group failed (quota, overload, outage): never replace existing research with a
+      // facts-only report. The job fails with a retryable message and the previous report stays.
+      if (errors.length === results.length) {
+        const previous = await db.query.researchReports.findFirst({ where: and(eq(researchReports.companyId, companyId), ne(researchReports.status, 'failed')), columns: { id: true } });
+        const reason = first.replace(/\s*Please try again[^.]*\.?$/i, '').replace(/\.$/, '');
+        if (previous) throw new Error(`${reason}. Your previous research is unchanged; please try again in a few minutes.`);
+      }
       limitations.push(`AI analysis was incomplete: ${errors.length} of ${results.length} analysis groups failed (${first}). Reported facts and calculated metrics are unaffected.`);
     }
     if (fallbackUsed) limitations.push(`The reasoning model was unavailable (quota, rate limit or overload); the analysis used the faster model (${[...modelsUsed].join(', ')}), which is less thorough.`);

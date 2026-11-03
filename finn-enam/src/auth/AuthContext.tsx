@@ -25,6 +25,15 @@ const AuthContext = createContext<AuthState | null>(null);
  * itself is still decided by the httpOnly refresh cookie on the server.
  */
 const HINT_KEY = 'finn-session-hint';
+/** Per-tab UI state tied to the signed-in user (e.g. the company open in Research). */
+const clearUserUiState = () => {
+  try {
+    sessionStorage.removeItem('finn-research-company');
+  } catch {
+    /* storage unavailable */
+  }
+};
+
 const hint = {
   get: () => {
     try {
@@ -96,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     tokenStore.onExpired(() => {
       hint.set(false);
+      clearUserUiState();
       setUser(null);
       setStatus('anonymous');
       qc.clear();
@@ -120,6 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout: async () => {
         await request('/auth/logout', { method: 'POST', auth: false }).catch(() => undefined);
         hint.set(false);
+        clearUserUiState();
         // A full reload drops every cached query and any live subscription of this user.
         tokenStore.set(null);
         window.location.assign('/');
