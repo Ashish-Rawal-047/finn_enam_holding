@@ -35,6 +35,7 @@ import {
 import { AiError, aiLabel, generateStructuredWithMeta, keepCited, numbersGrounded, type EvidenceItem } from '../ai/gateway.js';
 import { ApiError } from '../lib/http.js';
 import { freshness, syncCompany } from './companyData.js';
+import { analyseFinancials, analysisEvidence, type FinancialAnalysis } from './financialAnalysis.js';
 
 export type ClaimType = 'reported_fact' | 'calculated_metric' | 'ai_interpretation' | 'analyst_note';
 
@@ -196,9 +197,16 @@ async function loadContext(companyId: string) {
     where: and(eq(sourceDocuments.companyId, companyId), eq(sourceDocuments.provider, 'yfinance'), eq(sourceDocuments.documentType, 'other')),
     orderBy: desc(sourceDocuments.createdAt),
   });
+  const docMap = new Map(docs.map((d) => [d.id, d]));
+  const analysis = analyseFinancials(statements, {
+    sector: company.sector,
+    industry: company.industry,
+    docs: new Map(docs.map((d) => [d.id, { title: d.title, url: d.url, provider: d.provider }])),
+  });
   return {
     company,
     statements,
+    analysis,
     annual: statements.filter((s) => s.periodType === 'annual'),
     quarterly: statements.filter((s) => s.periodType === 'quarterly'),
     announcements,
@@ -207,7 +215,7 @@ async function loadContext(companyId: string) {
     quote,
     syncs,
     profileDoc: profileDoc ?? null,
-    docs: new Map(docs.map((d) => [d.id, d])),
+    docs: docMap,
   };
 }
 
@@ -485,15 +493,26 @@ export const AI_GROUPS = {
     sections: ['bullBear', 'investmentRisks', 'summary'] as SectionKey[],
     evidenceFrom: [...SECTION_KEYS] as SectionKey[],
     withFilings: true,
-    task: 'Debate the investment case for {company}: bull and bear arguments, industry and execution risks, and an overall summary.',
+    task: 'Debate the investment case for {company}: bull and bear arguments, industry and execution risks, and a structured analyst summary — what changed and why it matters, what supports the business, what concerns investors, and what to monitor next.',
     schema: z.object({
       bullCase: points(5, 'Bull case'),
       bearCase: points(5, 'Bear case'),
       industryRisks: points(3, 'Industry risks — only if evidence supports them'),
       executionRisks: points(3, 'Execution risks'),
-      keyFindings: points(4, 'Major findings'),
-      positives: points(3, 'Positive indicators'),
-      negatives: points(3, 'Negative indicators'),
+      changes: z
+        .array(
+          z.object({
+            change: z.string().describe('One sentence: what changed between the latest period and the previous comparable period, with the exact figures from the evidence'),
+            implication: z.string().describe('One or two sentences: why it matters for the business. Present causes only as possibilities ("may reflect …") and say what data would settle it; never repeat the figure as the explanation'),
+            evidenceIds: z.array(z.string()),
+          }),
+        )
+        .describe('The most significant changes, largest first. At most 4.'),
+      supports: points(4, 'What supports the business: e.g. improving profitability, strong cash generation, lower debt, efficiency gains, commitments delivered. Only with evidence; empty if none'),
+      concerns: points(4, 'What concerns investors: e.g. slowing revenue, falling margins, weak cash conversion, rising receivables or debt, capex risk, missed commitments. Only with evidence; empty if none — never add a concern to fill the list'),
+      monitor: z
+        .array(z.object({ question: z.string().describe('A specific question or indicator to check in the next results, tied to this company’s figures'), evidenceIds: z.array(z.string()) }))
+        .describe('3 to 5 things to monitor next'),
       unanswered: z.array(z.string()).describe('Important questions the evidence cannot answer (at most 5)'),
     }),
   },
@@ -502,10 +521,11 @@ export type AiGroup = keyof typeof AI_GROUPS;
 const GROUPS = Object.keys(AI_GROUPS) as AiGroup[];
 
 /** Bumped when prompts or schemas change, so cached reports are not reused across versions. */
-const PROMPT_VERSION = 'research-v4';
+const PROMPT_VERSION = 'research-v5';
 
 interface PackItem extends EvidenceItem {
   section: SectionKey | 'filings';
+  sourceUrl?: string | null;
 }
 
 /** Full evidence pack with stable ids. Texts are compacted; duplicates are dropped. */
@@ -516,8 +536,11 @@ export function evidencePack(ctx: Context, sections: Record<SectionKey, Section>
     const compact = text.replace(/\s+/g, ' ').trim().slice(0, 400);
     if (!compact || seen.has(compact)) return;
     seen.add(compact);
-    items.push({ id: `E${items.length + 1}`, section, kind, text: compact, sourceDocumentId: docId ?? null, sourceTitle: titleOf(ctx, docId) ?? (docId && docId === ctx.profileDoc?.id ? ctx.profileDoc.title : null) });
+    const doc = docId ? ctx.docs.get(docId) ?? (docId === ctx.profileDoc?.id ? ctx.profileDoc : undefined) : undefined;
+    items.push({ id: `E${items.length + 1}`, section, kind, text: compact, sourceDocumentId: docId ?? null, sourceTitle: doc?.title ?? null, sourceUrl: doc?.url ?? null });
   };
+  // Period-on-period comparisons first: they carry the exact changes an analysis cites.
+  for (const line of analysisEvidence(ctx.analysis)) push('financialSnapshot', 'calculated_metric', line.text, line.sourceDocumentId);
   for (const key of SECTION_KEYS) for (const c of sections[key].claims) push(key, c.claimType === 'calculated_metric' ? 'calculated_metric' : 'reported_fact', c.text, c.sourceDocumentId);
   for (const a of ctx.announcements) push('filings', 'document_excerpt', `${a.announcedAt.toISOString().slice(0, 10)} ${a.category}: ${a.title}. ${a.summary ?? ''}${a.isDemo ? ' [demonstration fixture]' : ''}`, a.sourceDocumentId);
   for (const m of ctx.mgmt) push('filings', 'reported_fact', `${m.changeType} of ${m.personName} as ${m.role}${m.effectiveDate ? ` effective ${m.effectiveDate}` : ''}.`, m.sourceDocumentId);
@@ -584,10 +607,63 @@ function applyGroup(group: AiGroup, out: Record<string, unknown>, evidence: Evid
     const prior = sections.investmentRisks.claims.filter((c) => c.claimType === 'ai_interpretation');
     const risks = [...prior, ...g(out.industryRisks, 'Industry risk'), ...g(out.executionRisks, 'Execution risk')];
     sections.investmentRisks = risks.length ? { status: 'available', claims: risks } : unavailable('No risk could be supported by the stored evidence.');
-    const summary = [...g(out.keyFindings, 'Key finding'), ...g(out.positives, 'Positive'), ...g(out.negatives, 'Negative')];
-    sections.summary = { status: summary.length ? 'available' : 'partial', claims: summary, data: { unanswered: ((out.unanswered as string[]) ?? []).slice(0, 5).map((q) => q.slice(0, 300)) } };
+    const intel = buildIntelligence(out, evidence);
+    dropped += intel.dropped;
+    const claimsOf = (items: Array<{ text: string; evidence: EvidenceRef[] }>, label: string): Claim[] =>
+      items.map((i) => ({ label, text: i.text, claimType: 'ai_interpretation', sourceDocumentId: i.evidence[0]?.sourceDocumentId ?? null, sourceTitle: i.evidence[0]?.sourceTitle ?? null }));
+    const summary = [
+      ...claimsOf(intel.changes.map((c) => ({ text: `${c.change} ${c.implication}`, evidence: c.evidence })), 'What changed'),
+      ...claimsOf(intel.supports, 'Supports'),
+      ...claimsOf(intel.concerns, 'Concern'),
+      ...claimsOf(intel.monitor.map((m) => ({ text: m.question, evidence: m.evidence })), 'Monitor'),
+    ];
+    sections.summary = {
+      status: summary.length ? 'available' : 'partial',
+      claims: summary,
+      data: { intelligence: { changes: intel.changes, supports: intel.supports, concerns: intel.concerns, monitor: intel.monitor }, unanswered: ((out.unanswered as string[]) ?? []).slice(0, 5).map((q) => q.slice(0, 300)) },
+    };
   }
   return dropped;
+}
+
+/** A cited evidence item, resolved so the UI can show it and link to its source. */
+export interface EvidenceRef {
+  id: string;
+  text: string;
+  kind: EvidenceItem['kind'];
+  sourceDocumentId: string | null;
+  sourceTitle: string | null;
+  sourceUrl: string | null;
+}
+
+const refsOf = (ids: string[], byId: Map<string, EvidenceItem & { sourceUrl?: string | null }>): EvidenceRef[] =>
+  ids.map((id) => byId.get(id)!).map((e) => ({ id: e.id, text: e.text, kind: e.kind, sourceDocumentId: e.sourceDocumentId, sourceTitle: e.sourceTitle, sourceUrl: e.sourceUrl ?? null }));
+
+/**
+ * FINN Intelligence: keeps only items whose citations resolve and whose every figure appears in
+ * the cited evidence (for a change, across both the change and its implication). Exported for tests.
+ */
+export function buildIntelligence(out: Record<string, unknown>, evidence: Array<EvidenceItem & { sourceUrl?: string | null }>) {
+  const byId = new Map(evidence.map((e) => [e.id, e]));
+  let dropped = 0;
+  const clip = (t: unknown, n = 400) => (typeof t === 'string' ? (t.length > n ? `${t.slice(0, n - 1)}…` : t).trim() : '');
+  const verified = <T extends { evidenceIds: string[] }>(items: T[], textOf: (i: T) => string, max: number) => {
+    const list = (Array.isArray(items) ? items : []).slice(0, max).map((i) => ({ ...i, evidenceIds: (i.evidenceIds ?? []).slice(0, 6) }));
+    const kept = keepCited(list, evidence).filter((i) => textOf(i) && numbersGrounded(textOf(i), i.evidenceIds.map((id) => byId.get(id)!)));
+    dropped += list.length - kept.length;
+    return kept;
+  };
+  type Change = { change: string; implication: string; evidenceIds: string[] };
+  type Monitor = { question: string; evidenceIds: string[] };
+  const changes = verified((out.changes as Change[]) ?? [], (c) => `${clip(c.change)} ${clip(c.implication)}`.trim(), 4).map((c) => ({
+    change: clip(c.change),
+    implication: clip(c.implication),
+    evidence: refsOf(c.evidenceIds, byId),
+  }));
+  const pointsOf = (key: string, max: number) =>
+    verified((out[key] as Point[]) ?? [], (p) => clip(p.text), max).map((p) => ({ text: clip(p.text), evidence: refsOf(p.evidenceIds, byId) }));
+  const monitor = verified((out.monitor as Monitor[]) ?? [], (m) => clip(m.question, 300), 5).map((m) => ({ question: clip(m.question, 300), evidence: refsOf(m.evidenceIds, byId) }));
+  return { changes, supports: pointsOf('supports', 4), concerns: pointsOf('concerns', 4), monitor, dropped };
 }
 
 export type SectionProgress = 'loading' | 'available' | 'partial' | 'unavailable';
@@ -788,4 +864,88 @@ export async function getEvidence(companyId: string, reportId?: string) {
     .where(eq(researchEvidence.reportId, latest.report.id));
   const documents = await db.select().from(sourceDocuments).where(eq(sourceDocuments.companyId, companyId)).orderBy(desc(sourceDocuments.publishedAt)).limit(50);
   return { reportId: latest.report.id, items: rows.map((r) => ({ ...r.evidence, document: r.document })), documents };
+}
+
+// ---------------------------------------------------------------------------
+// Financial analysis (charts, assessments, insights) and Ask FINN
+// ---------------------------------------------------------------------------
+
+/** Deterministic analysis of the stored statements; available with or without a research report. */
+export async function getFinancialAnalysis(companyId: string): Promise<FinancialAnalysis & { dataAsOf: Date | null; company: { name: string; sector: string | null } }> {
+  const company = await db.query.companies.findFirst({ where: eq(companies.id, companyId) });
+  if (!company) throw ApiError.notFound('Company not found');
+  const [statements, syncs] = await Promise.all([
+    db.select().from(financialStatements).where(eq(financialStatements.companyId, companyId)).orderBy(desc(financialStatements.periodEnd)),
+    freshness(companyId),
+  ]);
+  const ids = [...new Set(statements.map((s) => s.sourceDocumentId).filter((x): x is string => Boolean(x)))];
+  const docs = ids.length
+    ? await db.select({ id: sourceDocuments.id, title: sourceDocuments.title, url: sourceDocuments.url, provider: sourceDocuments.provider }).from(sourceDocuments).where(inArray(sourceDocuments.id, ids))
+    : [];
+  const analysis = analyseFinancials(statements, { sector: company.sector, industry: company.industry, docs: new Map(docs.map((d) => [d.id, d])) });
+  const fin = syncs.find((s) => s.dataset === 'financials' && s.status === 'ok');
+  return { ...analysis, dataAsOf: fin?.fetchedAt ?? null, company: { name: company.name, sector: company.sector } };
+}
+
+const askSchema = z.object({
+  answer: points(5, 'The answer as 1–5 short points, most important first. Each point cites evidence. State reported figures as facts and label interpretations as such'),
+  notCovered: z.string().describe('What the question asks that the evidence cannot answer (e.g. segment data, management commentary); empty string if fully answered'),
+});
+
+/** Answers are cached per company, question, evidence and model, so repeats cost no AI call. */
+const askCache = new Map<string, { at: number; value: AskResult }>();
+const ASK_TTL_MS = 12 * 60 * 60_000;
+
+export interface AskResult {
+  question: string;
+  answer: Array<{ text: string; evidence: EvidenceRef[] }>;
+  notCovered: string | null;
+  model: string;
+  generatedAt: string;
+  dataAsOf: string | null;
+  cached: boolean;
+}
+
+export async function askResearch(companyId: string, userId: string | null, rawQuestion: string): Promise<AskResult> {
+  const question = rawQuestion.replace(/\s+/g, ' ').trim();
+  if (!features.ai) throw ApiError.unavailable('AI is not configured on this server, so Ask FINN is unavailable. Reported figures and charts are unaffected.');
+  const ctx = await loadContext(companyId);
+  const pack = evidencePack(ctx, buildDeterministic(ctx));
+  if (pack.length < 5) throw ApiError.unprocessable('There is too little stored data about this company to answer questions. Refresh its data first.');
+  const dataAsOf = ctx.syncs.filter((s) => s.status === 'ok').reduce<Date | null>((max, s) => (!max || s.fetchedAt > max ? s.fetchedAt : max), null);
+  const key = createHash('sha256')
+    .update(JSON.stringify({ v: PROMPT_VERSION, companyId, q: question.toLowerCase(), model: aiLabel(), pack: pack.map((e) => e.text) }))
+    .digest('hex');
+  const hit = askCache.get(key);
+  if (hit && Date.now() - hit.at < ASK_TTL_MS) return { ...hit.value, cached: true };
+
+  let res;
+  try {
+    res = await generateStructuredWithMeta({
+      schema: askSchema,
+      tier: 'fast',
+      task: `An investor asks about ${ctx.company.name}: "${question}". Answer only from the evidence, citing evidence ids for every point. Explain what the figures show and why it matters; where the cause is not in the evidence, say what data would be needed instead of guessing. Do not give buy, sell or price-target recommendations.`,
+      evidence: pack,
+      meta: { feature: 'research.ask', userId },
+    });
+  } catch (err) {
+    const e = err instanceof AiError ? err : null;
+    throw ApiError.unavailable(e?.userMessage ?? 'FINN could not answer right now. Please try again shortly.');
+  }
+  const byId = new Map(pack.map((e) => [e.id, e]));
+  const raw = capped(((res.output as z.infer<typeof askSchema>).answer ?? []) as Point[], 5);
+  const { kept } = groundPoints(raw, pack);
+  const notCovered = ((res.output as z.infer<typeof askSchema>).notCovered ?? '').trim().slice(0, 400);
+  const value: AskResult = {
+    question,
+    answer: kept.map((p) => ({ text: p.text, evidence: refsOf(p.evidenceIds, byId) })),
+    notCovered: kept.length ? notCovered || null : notCovered || 'FINN could not support an answer to this question with the stored evidence.',
+    model: res.model,
+    generatedAt: new Date().toISOString(),
+    dataAsOf: dataAsOf?.toISOString() ?? null,
+    cached: false,
+  };
+  if (askCache.size >= 200) askCache.delete(askCache.keys().next().value!);
+  askCache.set(key, { at: Date.now(), value });
+  return value;
 }

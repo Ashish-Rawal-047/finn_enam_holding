@@ -4,7 +4,7 @@
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './api';
-import type {
+import type { AskResult, FinancialAnalysis,
   AlertPreferences,
   CompanySummary,
   AlertNote,
@@ -43,6 +43,7 @@ export const qk = {
   history: (id: string, range: Range) => ['history', id, range] as const,
   search: (q: string) => ['search', q] as const,
   research: (id: string, reportId?: string) => ['research', id, reportId ?? 'latest'] as const,
+  financials: (id: string) => ['financials', id] as const,
   researchJob: (id: string) => ['research-job', id] as const,
   alertNote: (id: string) => ['alert-note', id] as const,
   evidence: (id: string, reportId?: string) => ['evidence', id, reportId ?? 'latest'] as const,
@@ -129,6 +130,21 @@ export const useResearch = (companyId: string | null, reportId?: string) =>
     queryKey: qk.research(companyId ?? '', reportId),
     queryFn: () => request<ResearchResponse>(`/research/${companyId}`, { query: { reportId } }),
     enabled: Boolean(companyId),
+  });
+
+/** Charts, assessments and period comparisons computed from the stored statements (no AI). */
+export const useFinancialAnalysis = (companyId: string | null) =>
+  useQuery({
+    queryKey: qk.financials(companyId ?? ''),
+    queryFn: () => request<FinancialAnalysis>(`/research/${companyId}/financials`),
+    enabled: Boolean(companyId),
+    staleTime: 5 * 60_000,
+  });
+
+/** Ask FINN: one question about the company, answered from its stored evidence. */
+export const useAskFinn = (companyId: string | null) =>
+  useMutation({
+    mutationFn: (question: string) => request<AskResult>(`/research/${companyId}/ask`, { method: 'POST', body: { question }, timeoutMs: 60_000 }),
   });
 
 export const useEvidence = (companyId: string | null, reportId: string | undefined, enabled: boolean) =>
@@ -372,7 +388,7 @@ export function useResearchJob(jobId: string | null, companyId: string | null) {
     queryKey: qk.researchJob(jobId ?? ''),
     queryFn: async () => {
       const { job } = await request<{ job: ResearchJob }>(`/research/jobs/${jobId}`);
-      if (job.status === 'succeeded') await invalidate(['research', companyId ?? ''], ['evidence', companyId ?? ''], ['history', companyId ?? ''], ['overview', companyId ?? ''], qk.portfolio);
+      if (job.status === 'succeeded') await invalidate(['research', companyId ?? ''], ['financials', companyId ?? ''], ['evidence', companyId ?? ''], ['history', companyId ?? ''], ['overview', companyId ?? ''], qk.portfolio);
       return job;
     },
     enabled: Boolean(jobId),
@@ -393,7 +409,7 @@ export function useRefreshCompany(companyId: string | null) {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: () => request<{ results: Array<{ dataset: string; status: string; detail?: string }> }>(`/companies/${companyId}/refresh`, { method: 'POST' }),
-    onSuccess: () => invalidate(['research', companyId ?? ''], ['history', companyId ?? ''], ['overview', companyId ?? ''], qk.portfolio, qk.home),
+    onSuccess: () => invalidate(['research', companyId ?? ''], ['financials', companyId ?? ''], ['history', companyId ?? ''], ['overview', companyId ?? ''], qk.portfolio, qk.home),
   });
 }
 

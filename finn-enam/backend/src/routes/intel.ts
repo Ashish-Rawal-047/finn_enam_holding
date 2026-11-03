@@ -31,7 +31,8 @@ import { forbidDemo, isDemoAccount } from '../services/demo.js';
 import { DIGEST_WINDOWS, getDigest } from '../services/digest.js';
 import { deleteNote, getNote, listNotifications, markAllRead, markRead, saveNote, setArchived, setFavourite } from '../services/notifications.js';
 import { getPortfolio } from '../services/portfolio.js';
-import { getEvidence, getLatestReport } from '../services/research.js';
+import { askResearch, getEvidence, getFinancialAnalysis, getLatestReport } from '../services/research.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 import { activeResearchJob, getResearchJob, startResearchJob } from '../services/researchJobs.js';
 
 export const intelRouter = Router();
@@ -82,6 +83,29 @@ intelRouter.post(
     const { job, deduplicated } = await startResearchJob(companyId, userId(req), refreshData ? 'refresh_all' : 'refresh_ai');
     if (!deduplicated) await audit({ userId: userId(req), action: 'research.refresh', entityType: 'research_job', entityId: job.id, metadata: { refreshData }, req });
     res.status(202).json({ job, deduplicated });
+  }),
+);
+
+/** Charts, assessments and period comparisons computed from stored statements (no AI). */
+intelRouter.get(
+  '/research/:companyId/financials',
+  handle(async (req, res) => {
+    res.json(await getFinancialAnalysis(parse(uuidParam, req.params.companyId)));
+  }),
+);
+
+// Each new question is an AI call on a shared daily quota; repeats are served from cache.
+const askLimiter = rateLimit({ windowMs: 10 * 60_000, max: 12, key: 'research-ask' });
+const askBody = z.object({ question: z.string().trim().min(3, 'Ask a question of at least 3 characters').max(300, 'Keep the question under 300 characters') });
+
+/** Ask FINN: answers a question about the company from its stored evidence, with citations. */
+intelRouter.post(
+  '/research/:companyId/ask',
+  askLimiter,
+  handle(async (req, res) => {
+    const companyId = parse(uuidParam, req.params.companyId);
+    const { question } = parse(askBody, req.body ?? {});
+    res.json(await askResearch(companyId, userId(req), question));
   }),
 );
 

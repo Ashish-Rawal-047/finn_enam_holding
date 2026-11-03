@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { MotionConfig } from 'framer-motion';
 import { useAuth } from './auth/AuthContext';
 import { AuthScreen } from './screens/AuthScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { SignalsScreen } from './screens/SignalsScreen';
-import { ResearchScreen } from './screens/ResearchScreen';
 import { EventMemoryScreen } from './screens/EventMemoryScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { AppHeader } from './components/layout/AppHeader';
@@ -19,7 +18,35 @@ import { NotificationCenter } from './components/notifications/NotificationCente
 import { FinnLogo } from './components/common/FinnLogo';
 import { LiveNotifications, useUnreadCount, type LiveMode } from './lib/live';
 import { usePortfolio } from './lib/queries';
-import { Spinner } from './components/ui';
+import { LoadingBlock, Spinner } from './components/ui';
+
+// Research (charts, analysis, Ask FINN) loads on demand and is prefetched once the app is idle.
+// A failed chunk load (network blip, redeploy) is retried once before the error boundary shows.
+// If it still fails, a new version was most likely deployed (old chunk files are gone): reload
+// once to pick it up; the session flag prevents a reload loop.
+const loadResearch = () =>
+  import('./screens/ResearchScreen')
+    .catch(() => new Promise((r) => setTimeout(r, 1000)).then(() => import('./screens/ResearchScreen')))
+    .then((m) => {
+      try {
+        sessionStorage.removeItem('finn-chunk-reload');
+      } catch {
+        /* storage unavailable */
+      }
+      return m;
+    })
+    .catch((err) => {
+      let reloaded = false;
+      try {
+        reloaded = sessionStorage.getItem('finn-chunk-reload') === '1';
+        if (!reloaded) sessionStorage.setItem('finn-chunk-reload', '1');
+      } catch {
+        reloaded = true; // storage unavailable: do not risk a loop
+      }
+      if (!reloaded) window.location.reload();
+      throw err;
+    });
+const ResearchScreen = lazy(() => loadResearch().then((m) => ({ default: m.ResearchScreen })));
 
 type Theme = 'light' | 'dark';
 
@@ -151,6 +178,12 @@ function Shell({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void
   const portfolio = usePortfolio();
   const companiesWithAlerts = (portfolio.data ?? []).filter((h) => h.activeSignalCount > 0).length;
 
+  useEffect(() => {
+    // Prefetch only: never reloads the page (that is reserved for opening Research).
+    const t = setTimeout(() => void import('./screens/ResearchScreen').catch(() => undefined), 2_500);
+    return () => clearTimeout(t);
+  }, []);
+
   const navigate = useCallback((r: Route, replace = false) => {
     const url = routeUrl(r);
     if (url !== window.location.pathname + window.location.search) window.history[replace ? 'replaceState' : 'pushState'](r, '', url);
@@ -262,7 +295,11 @@ function Shell({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void
           />
         )}
         {tab === 'signals' && <SignalsScreen onOpenCompany={openCompany} onInspectSignal={setSignalId} onGoToSettings={() => go('settings')} />}
-        {tab === 'research' && <ResearchScreen companyId={researchCompanyId} onSelectCompany={setResearchCompanyId} onOpenCompany={openCompany} />}
+        {tab === 'research' && (
+          <Suspense fallback={<div className="pt-5"><LoadingBlock rows={4} /></div>}>
+            <ResearchScreen companyId={researchCompanyId} onSelectCompany={setResearchCompanyId} onOpenCompany={openCompany} />
+          </Suspense>
+        )}
         {tab === 'memory' && <EventMemoryScreen onOpenEvent={(id) => openEvent(id)} onCreateEvent={() => setCreatingEvent(true)} focusQuery={memoryFocus} />}
         {tab === 'settings' && <SettingsScreen theme={theme} onSetTheme={setTheme} onOpenCompany={openCompany} />}
       </AppShell>

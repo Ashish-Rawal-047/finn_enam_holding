@@ -702,6 +702,32 @@ test('personal notes: one per user per alert, validated, private, kept through a
   await call(`/alerts/${y.id}/favourite`, { method: 'DELETE', client: bob });
 });
 
+test('research financials: charts and comparisons match the stored statements; Ask FINN validates input', async () => {
+  const { pool } = await import('../src/db/client.js');
+  const { rows } = await pool.query(
+    `select c.id, s.period_label, s.revenue, s.pat from companies c join financial_statements s on s.company_id = c.id
+     where s.period_type = 'annual' and s.revenue is not null and s.pat is not null order by c.id, s.period_end desc limit 1`,
+  );
+  if (!rows.length) return; // no statements stored in this database
+  const id = rows[0].id as string;
+  assert.equal((await call(`/research/${id}/financials`)).status, 401);
+  const r = await call(`/research/${id}/financials`, { client: alice });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const latest = r.json.annual.filter((p: { missing: boolean }) => !p.missing).at(-1);
+  assert.equal(latest.period, rows[0].period_label);
+  assert.equal(latest.revenue, rows[0].revenue, 'charted revenue is the stored figure');
+  assert.equal(latest.pat, rows[0].pat);
+  assert.equal(latest.netMargin, Math.round((rows[0].pat / rows[0].revenue) * 1000) / 10);
+  for (const s of r.json.assessments) assert.ok(['positive', 'negative', 'neutral'].includes(s.tone) && s.rule.length > 20);
+  for (const i of r.json.insights) assert.ok(i.period && i.previousPeriod && i.whyItMatters && i.formula);
+  assert.equal(r.json.annual.some((p: { missing: boolean; revenue: number | null }) => p.missing && p.revenue !== null), false, 'gaps carry no values');
+  assert.equal((await call('/research/00000000-0000-4000-8000-000000000000/financials', { client: alice })).status, 404);
+  // Ask FINN: input is validated before any AI call.
+  assert.equal((await call(`/research/${id}/ask`, { method: 'POST', body: { question: 'Why?' } })).status, 401);
+  assert.equal((await call(`/research/${id}/ask`, { method: 'POST', client: alice, body: { question: 'x' } })).status, 400);
+  assert.equal((await call(`/research/${id}/ask`, { method: 'POST', client: alice, body: { question: 'q'.repeat(301) } })).status, 400);
+});
+
 test('logout revokes the refresh session', async () => {
   const login = await call('/auth/login', { method: 'POST', body: { email: bob.email, password: 'Str0ngPassw0rd!' } });
   const cookie = cookieOf(login.setCookie);

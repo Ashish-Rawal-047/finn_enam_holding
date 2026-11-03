@@ -522,3 +522,121 @@ export interface HealthResponse {
   realtime: { configured: boolean };
   providers: Record<string, { name: string; isDemo: boolean; configured: boolean; description: string }>;
 }
+
+// --- Research intelligence (deterministic analysis, FINN Intelligence, Ask FINN) -----------------
+
+export interface PeriodPoint {
+  period: string;
+  periodEnd: string | null;
+  /** A period inside the range that the source did not report (shown as a gap). */
+  missing: boolean;
+  revenue: number | null;
+  pat: number | null;
+  ebitda: number | null;
+  ebitdaDerived: boolean;
+  operatingIncome: number | null;
+  eps: number | null;
+  ebitdaMargin: number | null;
+  operatingMargin: number | null;
+  netMargin: number | null;
+  operatingCashFlow: number | null;
+  capex: number | null;
+  freeCashFlow: number | null;
+  cfoToPat: number | null;
+  borrowings: number | null;
+  cash: number | null;
+  netDebt: number | null;
+  debtToEquity: number | null;
+  interestCoverage: number | null;
+  revenueGrowth: number | null;
+  profitGrowth: number | null;
+  epsGrowth: number | null;
+  comparedWith: string | null;
+  sourceDocumentId: string | null;
+}
+
+export type Tone = 'positive' | 'negative' | 'neutral';
+
+export interface SourceRef {
+  documentId: string | null;
+  title: string | null;
+  url: string | null;
+  provider: string | null;
+}
+
+export interface Assessment {
+  key: 'growth' | 'profitability' | 'cash' | 'balanceSheet';
+  title: string;
+  label: string;
+  tone: Tone;
+  value: string | null;
+  detail: string;
+  rule: string;
+  period: string | null;
+}
+
+export interface Insight {
+  key: string;
+  headline: string;
+  metric: string;
+  value: number;
+  display: string;
+  previous: number | null;
+  previousDisplay: string | null;
+  change: string | null;
+  direction: 'up' | 'down' | 'flat';
+  tone: Tone;
+  whyItMatters: string;
+  period: string;
+  previousPeriod: string | null;
+  formula: string;
+  source: SourceRef;
+}
+
+export interface FinancialAnalysis {
+  currency: string;
+  unit: string;
+  isFinancialSector: boolean;
+  isDemo: boolean;
+  annual: PeriodPoint[];
+  quarterly: PeriodPoint[];
+  latestPeriod: string | null;
+  previousPeriod: string | null;
+  assessments: Assessment[];
+  insights: Insight[];
+  sources: SourceRef[];
+  gaps: string[];
+  dataAsOf: string | null;
+  company: { name: string; sector: string | null };
+}
+
+export interface CitedEvidence {
+  id: string;
+  text: string;
+  kind: 'reported_fact' | 'calculated_metric' | 'document_excerpt' | 'event';
+  sourceDocumentId: string | null;
+  sourceTitle: string | null;
+  sourceUrl: string | null;
+}
+
+export interface IntelligencePoint {
+  text: string;
+  evidence: CitedEvidence[];
+}
+
+export interface Intelligence {
+  changes: Array<{ change: string; implication: string; evidence: CitedEvidence[] }>;
+  supports: IntelligencePoint[];
+  concerns: IntelligencePoint[];
+  monitor: Array<{ question: string; evidence: CitedEvidence[] }>;
+}
+
+export interface AskResult {
+  question: string;
+  answer: IntelligencePoint[];
+  notCovered: string | null;
+  model: string;
+  generatedAt: string;
+  dataAsOf: string | null;
+  cached: boolean;
+}

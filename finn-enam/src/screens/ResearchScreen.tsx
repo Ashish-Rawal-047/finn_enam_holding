@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, Check, ChevronDown, ChevronRight, CloudDownload, ExternalLink, FileText, Globe, Minus, RefreshCw, Search, Sparkles, X } from 'lucide-react';
-import { useCompanySearch, useEvidence, useHealth, useImportCompany, usePortfolio, useRefreshCompany, useResearch, useResearchJob, useStartResearch } from '../lib/queries';
+import { useCompanySearch, useEvidence, useFinancialAnalysis, useHealth, useImportCompany, usePortfolio, useRefreshCompany, useResearch, useResearchJob, useStartResearch } from '../lib/queries';
 import { dateTime, humanize, inr, relativeTime, shortDate } from '../lib/format';
-import type { Claim, Freshness, Quote, ResearchJob, ResearchReport, ResearchResponse, ResearchSection, SectionKey, SectionProgress } from '../lib/types';
+import type { Claim, FinancialAnalysis, Freshness, Quote, ResearchJob, ResearchReport, ResearchResponse, ResearchSection, SectionKey, SectionProgress } from '../lib/types';
 import { useToast } from '../components/common/Toast';
-import { FinancialChart, type FinancialPoint } from '../components/charts/FinancialChart';
+import { IntelligenceOverview, InsightCards, SourceLine } from '../components/research/Overview';
+import { FinnIntelligence } from '../components/research/FinnIntelligence';
+import { ResearchCharts } from '../components/research/ResearchCharts';
+import { AskFinn } from '../components/research/AskFinn';
+import { StatementTable } from '../components/research/StatementTable';
 import { EASE_OUT } from '../components/motion';
 import { Change, ClaimTag, DemoPill, EmptyState, ErrorState, Eyebrow, LoadingBlock, Panel, PrimaryButton, ScreenTitle, SecondaryButton, Skeleton, Spinner, Ticker, cx, inputCls } from '../components/ui';
 import { CompanyLogo } from '../components/company/CompanyLogo';
@@ -58,6 +62,8 @@ export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, on
   const job = useResearchJob(jobId, companyId);
   const refresh = useRefreshCompany(companyId);
   const health = useHealth();
+  const analysis = useFinancialAnalysis(companyId);
+  const aiConfigured = Boolean(health.data?.ai.configured);
   const toast = useToast();
   const report = research.data?.report ?? null;
 
@@ -225,7 +231,7 @@ export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, on
                 </PrimaryButton>
                 {research.data.history.length > 1 && (
                   <select
-                    className="min-h-[44px] rounded-lg border border-divider bg-paper px-2 text-[12px] dark:border-ink-border dark:bg-ink-surfaceSubtle"
+                    className="min-h-[44px] w-full min-w-0 truncate rounded-lg border border-divider bg-paper px-2 text-[12px] xs:w-[46%] dark:border-ink-border dark:bg-ink-surfaceSubtle"
                     value={report.id}
                     onChange={(e) => setReportId(e.target.value)}
                     aria-label="Report version"
@@ -259,14 +265,14 @@ export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, on
 
           {running ? (
             current?.partial ? (
-              <ReportView report={liveReport(current)} companyId={companyId} progress={current.progress} live />
+              <ReportView report={liveReport(current)} companyId={companyId} companyName={research.data.company.name} analysis={analysis} aiConfigured={aiConfigured} progress={current.progress} live />
             ) : (
               <LoadingBlock rows={4} />
             )
           ) : !report ? (
-            <EmptyState title="No research report yet" body="Generate one to assemble everything FINN holds about this company, with sources." />
+            <ResearchSummary companyId={companyId} companyName={research.data.company.name} analysis={analysis} report={null} aiConfigured={aiConfigured} />
           ) : (
-            <ReportView report={report} companyId={companyId} />
+            <ReportView report={report} companyId={companyId} companyName={research.data.company.name} analysis={analysis} aiConfigured={aiConfigured} />
           )}
         </>
       )}
@@ -461,8 +467,18 @@ const SectionChip: React.FC<{ letter: string; title: string; state: SectionProgr
 
 // ---------------------------------------------------------------------------
 
-const ReportView: React.FC<{ report: ResearchReport; companyId: string; progress?: Partial<Record<SectionKey, SectionProgress>>; live?: boolean }> = ({ report, companyId, progress, live }) => {
-  const [open, setOpen] = useState<Set<string>>(() => new Set(['summary', 'financialSnapshot']));
+type AnalysisQuery = ReturnType<typeof useFinancialAnalysis>;
+
+const ReportView: React.FC<{
+  report: ResearchReport;
+  companyId: string;
+  companyName: string;
+  analysis: AnalysisQuery;
+  aiConfigured: boolean;
+  progress?: Partial<Record<SectionKey, SectionProgress>>;
+  live?: boolean;
+}> = ({ report, companyId, companyName, analysis, aiConfigured, progress, live }) => {
+  const [open, setOpen] = useState<Set<string>>(() => new Set(['financialSnapshot']));
   const toggle = (k: string) =>
     setOpen((s) => {
       const n = new Set(s);
@@ -470,13 +486,16 @@ const ReportView: React.FC<{ report: ResearchReport; companyId: string; progress
       else n.add(k);
       return n;
     });
-  const traj = report.sections.businessTrajectory?.data as { annual?: FinancialPoint[]; quarterly?: FinancialPoint[]; currency?: string; unit?: string } | undefined;
   // Category navigation: open the section, then bring it to the top of the screen.
   const jump = (k: string) => {
     setOpen((s) => new Set(s).add(k));
     requestAnimationFrame(() => document.getElementById(`research-${k}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
-  const navItems = [...SECTIONS.filter((s) => report.sections[s.key]).map((s) => ({ key: s.key as string, label: s.short })), ...(live ? [] : [{ key: 'evidence', label: 'Evidence' }])];
+  const navItems = [
+    { key: 'summary', label: 'Summary' },
+    ...SECTIONS.filter((s) => s.key !== 'summary' && report.sections[s.key]).map((s) => ({ key: s.key as string, label: s.short })),
+    ...(live ? [] : [{ key: 'evidence', label: 'Evidence' }]),
+  ];
 
   return (
     <div className="space-y-4">
@@ -516,17 +535,13 @@ const ReportView: React.FC<{ report: ResearchReport; companyId: string; progress
         </div>
       )}
 
-      {traj && ((traj.annual?.length ?? 0) > 1 || (traj.quarterly?.length ?? 0) > 1) && (
-        <Panel as="section" className="space-y-3">
-          <h3 className="font-serif text-[22px] leading-tight text-forest-dark dark:text-white">Financial overview</h3>
-          <FinancialChart annual={traj.annual ?? []} quarterly={traj.quarterly ?? []} currency={traj.currency ?? 'INR'} unit={traj.unit ?? 'crore'} />
-        </Panel>
-      )}
+      <ResearchSummary companyId={companyId} companyName={companyName} analysis={analysis} report={report} aiConfigured={aiConfigured} summaryProgress={progress?.summary} live={live} />
 
       <div className="space-y-2.5">
+        <h3 className="px-0.5 pt-2 font-serif text-[20px] leading-tight text-forest-dark dark:text-white">Detailed analysis</h3>
         {SECTIONS.map((s) => {
           const section = report.sections[s.key];
-          if (!section) return null;
+          if (!section || s.key === 'summary') return null;
           const isOpen = open.has(s.key);
           const loading = progress?.[s.key] === 'loading';
           return (
@@ -552,7 +567,7 @@ const ReportView: React.FC<{ report: ResearchReport; companyId: string; progress
                 {isOpen && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.28, ease: EASE_OUT }} className="overflow-hidden">
                     <div className="space-y-4 border-t border-divider px-4 py-4 dark:border-ink-border">
-                      {loading && section.status === 'unavailable' ? null : <SectionBody sectionKey={s.key} section={section} />}
+                      {loading && section.status === 'unavailable' ? null : <SectionBody sectionKey={s.key} section={section} analysis={analysis.data} />}
                       {loading && (
                         <div className="space-y-2" role="status" aria-label="Analysis in progress">
                           <Skeleton className="h-3 w-11/12" />
@@ -586,6 +601,75 @@ const ReportView: React.FC<{ report: ResearchReport; companyId: string; progress
   );
 };
 
+/**
+ * Research summary: executive overview and period comparisons (calculated, always available),
+ * FINN Intelligence (AI, from the report), the five financial charts and Ask FINN.
+ */
+const ResearchSummary: React.FC<{
+  companyId: string;
+  companyName: string;
+  analysis: ReturnType<typeof useFinancialAnalysis>;
+  report: ResearchReport | null;
+  aiConfigured: boolean;
+  summaryProgress?: SectionProgress;
+  live?: boolean;
+}> = ({ companyId, companyName, analysis, report, aiConfigured, summaryProgress, live }) => {
+  const a = analysis.data;
+  const unanswered = (report?.sections.summary?.data as { unanswered?: string[] } | undefined)?.unanswered;
+  const negative = a?.insights.find((i) => i.tone === 'negative');
+  const openQuestion = unanswered?.[0]
+    ? { text: unanswered[0], origin: 'ai' as const }
+    : negative
+      ? { text: `What explains “${negative.headline.toLowerCase()}”? FINN’s data has no segment split or management commentary to answer it.`, origin: 'data' as const }
+      : null;
+  return (
+    <div id="research-summary" className="scroll-mt-14 space-y-4">
+      {analysis.isLoading ? (
+        <LoadingBlock rows={3} />
+      ) : analysis.isError || !a ? (
+        <ErrorState error={analysis.error} onRetry={() => analysis.refetch()} />
+      ) : (
+        <>
+          {a.assessments.length > 0 && (
+            <Panel as="section" className="space-y-3">
+              <IntelligenceOverview analysis={a} openQuestion={openQuestion} />
+              <SourceLine analysis={a} />
+            </Panel>
+          )}
+          {(a.insights.length > 0 || a.annual.length > 0) && (
+            <section aria-label="Key financial insights" className="space-y-3">
+              <h3 className="px-0.5 font-serif text-[20px] leading-tight text-forest-dark dark:text-white">Key financial insights</h3>
+              <InsightCards analysis={a} />
+            </section>
+          )}
+        </>
+      )}
+      <Panel as="section" className="space-y-4">
+        <FinnIntelligence report={report} progress={summaryProgress} latestPeriod={a?.latestPeriod ?? null} analysisDataAsOf={a?.dataAsOf ?? null} aiConfigured={aiConfigured} />
+      </Panel>
+      {a && (a.annual.length > 0 || a.quarterly.length > 0) && (
+        <Panel as="section" className="space-y-4">
+          <h3 className="font-serif text-[20px] leading-tight text-forest-dark dark:text-white">Financial trends</h3>
+          <ResearchCharts analysis={a} />
+          {a.gaps.length > 0 && (
+            <ul className="space-y-1 border-t border-divider pt-3 text-[11px] leading-snug text-ink-subtle dark:border-ink-border">
+              {a.gaps.map((g) => (
+                <li key={g}>{g}</li>
+              ))}
+            </ul>
+          )}
+          <SourceLine analysis={a} />
+        </Panel>
+      )}
+      {!live && (
+        <Panel as="section">
+          <AskFinn companyId={companyId} companyName={companyName} aiConfigured={aiConfigured} />
+        </Panel>
+      )}
+    </div>
+  );
+};
+
 const StatusDot: React.FC<{ status: ResearchSection['status'] }> = ({ status }) => (
   <span
     className={cx(
@@ -604,13 +688,14 @@ const METRIC_SECTIONS: SectionKey[] = ['financialSnapshot', 'balanceSheet', 'cas
 const isMetricClaim = (c: Claim) =>
   c.claimType !== 'ai_interpretation' && c.label !== 'Business description' && ((c.value !== undefined && c.value !== null) || /^[^:]{2,40}: [₹$\d\-−+.,%×x a-zA-Z()]{1,40}$/.test(c.text));
 
-const SectionBody: React.FC<{ sectionKey: SectionKey; section: ResearchSection }> = ({ sectionKey, section }) => {
+const SectionBody: React.FC<{ sectionKey: SectionKey; section: ResearchSection; analysis?: FinancialAnalysis }> = ({ sectionKey, section, analysis }) => {
   const segments = (section.data as { segments?: Array<{ name: string; sharePercent: number; growthYoY: number }> } | undefined)?.segments;
   const unanswered = sectionKey === 'summary' ? (section.data as { unanswered?: string[] } | undefined)?.unanswered : undefined;
   return (
     <>
       {section.reason && <p className="text-[12px] leading-relaxed text-ink-muted">{section.reason}</p>}
       {METRIC_SECTIONS.includes(sectionKey) && <MetricGrid claims={section.claims} />}
+      {sectionKey === 'financialSnapshot' && analysis && (analysis.annual.length > 0 || analysis.quarterly.length > 0) && <StatementTable analysis={analysis} />}
       {sectionKey === 'businessSnapshot' && segments && <Segments segments={segments} />}
       {sectionKey === 'bullBear' && section.claims.length > 0 ? (
         <BullBear claims={section.claims} />

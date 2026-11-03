@@ -13,7 +13,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "demo:seed": "tsx src/db/seedDemo.ts",
     "jobs:run": "tsx src/jobs/cli.ts",
-    "test": "tsx --test test/engine.test.ts test/ai.test.ts",
+    "test": "tsx --test test/engine.test.ts test/ai.test.ts test/analysis.test.ts",
     "test:api": "tsx --test --test-concurrency=1 test/api.integration.ts"
   },
   "dependencies": {
