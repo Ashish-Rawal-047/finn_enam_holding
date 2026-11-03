@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight } from 'lucide-react';
-import { useAuth } from '../auth/AuthContext';
 import { useAddDemoPortfolio, useEvents, useHome, usePortfolio } from '../lib/queries';
 import { greetingFor, humanize, shortDate } from '../lib/format';
 import { QuoteBlock } from '../components/home/QuoteBlock';
@@ -24,7 +23,6 @@ interface Props {
 }
 
 export const HomeScreen: React.FC<Props> = ({ onInspectSignal, onOpenNotifications, onGoToSettings, onOpenCompany, onOpenEvent, onGoToMemory, onViewHistoricalEvent }) => {
-  const { user } = useAuth();
   const home = useHome();
   const portfolio = usePortfolio();
   const events = useEvents({ scope: 'portfolio', page: 1 });
@@ -45,8 +43,7 @@ export const HomeScreen: React.FC<Props> = ({ onInspectSignal, onOpenNotificatio
           <Eyebrow>{dateLine}</Eyebrow>
           <h1 className="font-serif text-[30px] leading-[1.08] text-forest-dark dark:text-white">
             {greetingFor(now)}
-            {/* The shared demo account is greeted without a name. */}
-            {home.data?.greetingName && !user?.isDemoAccount ? (
+            {home.data?.greetingName ? (
               <>
                 , <span className="italic text-forest dark:text-emerald">{home.data.greetingName}</span>.
               </>
