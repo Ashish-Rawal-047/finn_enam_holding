@@ -13,6 +13,7 @@ import { qk, useNotifications } from './queries';
 interface LiveRow {
   id: string;
   read_at: string | null;
+  archived_at: string | null;
 }
 
 type Sealed = { url: string; sealed: SealedLiveQuery<LiveRow> };
@@ -69,8 +70,8 @@ const LiveBridge: React.FC<{ sealed: SealedLiveQuery<LiveRow>; onMode: (m: LiveM
     onMode(status === 'error' ? 'polling' : data === undefined ? 'connecting' : 'realtime');
   }, [status, data, onMode]);
 
-  // A change in ids or read state means new or updated notifications.
-  const signature = data ? data.map((r) => `${r.id}:${r.read_at ?? ''}`).join('|') : null;
+  // A change in ids, read or archive state means new or updated notifications.
+  const signature = data ? data.map((r) => `${r.id}:${r.read_at ?? ''}:${r.archived_at ?? ''}`).join('|') : null;
   useEffect(() => {
     if (signature === null) return;
     qc.invalidateQueries({ queryKey: ['notifications'] });

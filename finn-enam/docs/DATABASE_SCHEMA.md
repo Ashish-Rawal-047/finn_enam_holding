@@ -5,6 +5,7 @@ The source of truth is `backend/src/db/schema.ts` (Drizzle). Migrations live in 
 * `0001_init.sql` creates the tables, enums, foreign keys and indexes
 * `0002_yfinance_and_event_links.sql` adds live-data columns, `data_syncs` and alert → event links
 * `0003_favourites_research_jobs_ai_usage.sql` adds alert favourites, research jobs, AI usage tracking, report reuse hashes and AI precedent assessments
+* `0005_alert_archive_and_notes.sql` adds `notifications.archived_at` (with a partial index) and the `alert_notes` table — additive only
 * `0004_company_logos_and_demo_account.sql` adds `companies.website_domain` (backfilled from the provider-reported website) and `companies.logo_url`, the `company_logos` cache, and `users.is_demo_account`
 
 Apply them with `npm run db:migrate`, which uses the direct, unpooled URL.
@@ -15,6 +16,7 @@ Apply them with `npm run db:migrate`, which uses the direct, unpooled URL.
 | 2 | User profiles | `user_profiles` | PK/FK `user_id` → users (cascade) |
 | — | Auth sessions | `auth_sessions` | unique `token_hash`; refresh rotation and revocation |
 | 3 | Companies | `companies` | unique `nse_symbol`, `bse_code`, `isin`; `is_demo`; `website_domain` (verified identity), optional `logo_url` |
+| — | Alert notes | `alert_notes` | unique (`user_id`, `notification_id`) — one note per user per alert; FKs to users and notifications (cascade) |
 | — | Company logos | `company_logos` | PK `symbol` (Yahoo form); FK `company_id` → companies (set null); `status` ok \| missing, `source`, image bytes, `checked_at` (ok: 30 days, missing: 3 days, unreachable site: 1 hour) |
 | 4 | User portfolios | `portfolio_holdings` | PK (`user_id`, `company_id`) |
 | 5 | Watchlists | `watchlists` | unique (`user_id`, `lower(name)`) |
@@ -26,7 +28,7 @@ Apply them with `npm run db:migrate`, which uses the direct, unpooled URL.
 | 11 | Financial statements | `financial_statements` | unique (`company_id`, `period_type`, `period_end`); values in ₹ crore; NULL means not disclosed |
 | 12 | Management changes | `management_changes` | unique (company, `lower(person)`, `lower(role)`, change type) |
 | 13 | Signals | `signals` | unique `dedup_key` (one per underlying event) |
-| 14 | Notifications | `notifications` | unique (`user_id`, `signal_id`); `read_at` and `favourited_at` are independent per-user states (partial index on favourites) |
+| 14 | Notifications | `notifications` | unique (`user_id`, `signal_id`); `read_at`, `favourited_at` and `archived_at` are independent per-user states (partial indexes on favourites and archive); archiving never deletes |
 | 15 | Alert preferences | `alert_preferences` | PK `user_id`; default ±2.5% / 2.0× |
 | 16 | Research reports | `research_reports` | generator (names the models actually used), sections (jsonb), limitations, `data_as_of`, `input_hash` (evidence + model; identical hash ⇒ reuse), `timings` |
 | — | Research jobs | `research_jobs` | owner `requested_by`; status, stage, per-section `progress`, `partial` sections, `report_id`, `reused`, `timings` |

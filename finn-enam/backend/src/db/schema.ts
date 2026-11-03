@@ -507,13 +507,38 @@ export const notifications = pgTable(
     readAt: timestamp('read_at', { withTimezone: true }),
     /** Set when the user bookmarks the alert; independent of read state, priority and order. */
     favouritedAt: timestamp('favourited_at', { withTimezone: true }),
+    /** Set when the user archives the alert: hidden from the active feed, never deleted; independent of read and favourite state. */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
     uniqueIndex('notifications_user_signal_uq').on(t.userId, t.signalId),
     index('notifications_user_created_idx').on(t.userId, t.createdAt),
     index('notifications_user_favourited_idx').on(t.userId, t.favouritedAt).where(sql`${t.favouritedAt} is not null`),
+    index('notifications_user_archived_idx').on(t.userId, t.archivedAt).where(sql`${t.archivedAt} is not null`),
   ],
+);
+
+/**
+ * Personal research notes on an alert (a user's notification). One note per user per alert for
+ * now (unique constraint); dropping it would allow several. Deleting the user or the alert
+ * deletes the note; archiving and restoring the alert leave it untouched.
+ */
+export const alertNotes = pgTable(
+  'alert_notes',
+  {
+    id: id(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    notificationId: uuid('notification_id')
+      .notNull()
+      .references(() => notifications.id, { onDelete: 'cascade' }),
+    content: text('content').notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('alert_notes_user_notification_uq').on(t.userId, t.notificationId)],
 );
 
 export const alertPreferences = pgTable('alert_preferences', {

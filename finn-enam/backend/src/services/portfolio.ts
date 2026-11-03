@@ -41,7 +41,7 @@ export async function getPortfolio(userId: string) {
           .select({ companyId: signals.companyId, count: sql<number>`count(*)::int` })
           .from(signals)
           .innerJoin(sql`notifications n`, sql`n.signal_id = ${signals.id} and n.user_id = ${userId}`)
-          .where(and(inArray(signals.companyId, ids), sql`n.read_at is null`))
+          .where(and(inArray(signals.companyId, ids), sql`n.read_at is null and n.archived_at is null`))
           .groupBy(signals.companyId)
       : Promise.resolve([]),
   ]);

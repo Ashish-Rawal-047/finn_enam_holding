@@ -13,6 +13,7 @@ export interface LiveNotificationRow {
   body: string;
   priority: string;
   read_at: string | null;
+  archived_at: string | null;
   created_at: string;
 }
 
@@ -23,7 +24,7 @@ const realtime = features.realtime ? createRealtime({ secret: env.NEON_REALTIME_
 export function liveNotificationsQuery(userId: string) {
   // Deterministic, read-only, parameterised: the user id is bound, never interpolated.
   return rawSql<LiveNotificationRow>(
-    `SELECT id, signal_id, title, body, priority::text AS priority, read_at, created_at
+    `SELECT id, signal_id, title, body, priority::text AS priority, read_at, archived_at, created_at
        FROM notifications
       WHERE user_id = $1
       ORDER BY created_at DESC

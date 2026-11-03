@@ -137,3 +137,15 @@ Spot-checks: comparisons cite only figures from the two records (e.g. ₹1,200 C
 * **Tata Motors:** still demo until a Yahoo symbol is chosen (`TMPV.NS` or `TMCV.NS`).
 * **Logo coverage:** without `LOGO_DEV_TOKEN`, logos come from favicons and the official websites. Reliance, ITC, HDFC Bank and Maruti only publish 16 px icons (drawn small, not stretched). Trent's site declares no icon, so it shows initials. Websites that time out are retried after an hour.
 * **Unexplained test failure:** the deduplication API test failed once, on the first run that ingested a new trading day. Its job output was not captured. It has passed on both runs since (isolated, and the final full suite).
+
+## Alert swipe actions, archive and notes (feature branch, Neon branch `dev-alert-productivity`)
+
+Tested against a Neon copy-on-write branch of production; production was not migrated or modified.
+
+| Check | Result |
+| --- | --- |
+| Migration `0005` on the dev branch | applied (30 tables); all 72 notifications kept their read and favourite states |
+| Unit tests | 31 / 31 |
+| API tests | 22 / 22 (research skipped to save AI quota), including: archive is idempotent, leaves the active feed and its unread/read counts, keeps read state (also through mark-all-read), lists under Archived, restore returns it once; notes create, update (one per alert), validate (empty / over 4,000 characters → 400), survive archive and restore, delete idempotently; another user gets 404 for archive, restore and every note method; a favourite, read alert with a note keeps all three through archive and restore |
+| Browser, 375×812, 390×844, 430×932 (touch) | 20 / 20 each: swipe right marks read then unread (toast with Undo); a short swipe does nothing; a vertical drag over a card scrolls the feed and triggers nothing; swipe left archives; the Archived view shows it still unread; Restore returns it once; note save → refresh → edit → refresh → delete with confirmation, indicator appears and disappears; keyboard-operable actions menu (Enter opens with focus on the first item, Escape closes); Save and Evidence still work; no horizontal overflow; no JS errors |
+| Browser, 1280×800 (mouse) | 19 / 19: the same with a mouse drag (no touch-scroll check) |

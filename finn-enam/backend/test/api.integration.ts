@@ -616,6 +616,92 @@ test('reviewer demo account: signs in, sees demo data, cannot change shared reco
   assert.equal((await call('/settings', { method: 'PATCH', client: alice, body: { fullName: 'alice Tester' } })).status, 200);
 });
 
+test('archive and restore: out of the active feed, never deleted, state preserved, private', async () => {
+  const q = '/notifications?status=all&sort=attention&pageSize=100';
+  const before = (await call(q, { client: bob })).json;
+  const [x] = before.items;
+  assert.ok(x, 'bob has alerts');
+  await call(`/notifications/${x.id}/read`, { method: 'PATCH', client: bob, body: { read: false } });
+  const start = (await call(q, { client: bob })).json;
+
+  const arch = await call(`/alerts/${x.id}/archive`, { method: 'POST', client: bob });
+  assert.equal(arch.status, 200);
+  assert.equal(arch.json.archived, true);
+  assert.equal(arch.json.readAt, null, 'archiving does not mark as read');
+  const again = await call(`/alerts/${x.id}/archive`, { method: 'POST', client: bob });
+  assert.equal(again.json.archivedAt, arch.json.archivedAt, 'idempotent: the first archive time is kept');
+
+  const active = (await call(q, { client: bob })).json;
+  assert.ok(!active.items.some((n: { id: string }) => n.id === x.id), 'gone from the active feed');
+  assert.equal(active.pagination.total, start.pagination.total - 1);
+  assert.equal(active.unread, start.unread - 1, 'archived alerts leave the unread count');
+  assert.equal(active.archived, start.archived + 1);
+  const unreadView = (await call('/notifications?status=unread&pageSize=100', { client: bob })).json;
+  assert.ok(!unreadView.items.some((n: { id: string }) => n.id === x.id));
+  const archived = await call('/alerts/archived', { client: bob });
+  assert.equal(archived.status, 200);
+  const item = archived.json.items.find((n: { id: string }) => n.id === x.id);
+  assert.ok(item && item.archived && item.readAt === null, 'listed under Archived, still unread');
+  assert.equal((await call('/notifications?status=archived', { client: bob })).json.pagination.total, archived.json.pagination.total);
+
+  // Mark-all-read touches only the active feed.
+  await call('/notifications/read-all', { method: 'POST', client: bob });
+  const stillUnread = (await call('/alerts/archived', { client: bob })).json.items.find((n: { id: string }) => n.id === x.id);
+  assert.equal(stillUnread.readAt, null, 'archived alerts keep their own read state');
+
+  // Private: another user can neither archive, restore nor see it.
+  assert.equal((await call(`/alerts/${x.id}/archive`, { method: 'POST', client: alice })).status, 404);
+  assert.equal((await call(`/alerts/${x.id}/restore`, { method: 'POST', client: alice })).status, 404);
+  assert.ok(!(await call('/alerts/archived', { client: alice })).json.items.some((n: { id: string }) => n.id === x.id));
+
+  const restored = await call(`/alerts/${x.id}/restore`, { method: 'POST', client: bob });
+  assert.equal(restored.json.archived, false);
+  const after = (await call(q, { client: bob })).json;
+  assert.equal(after.items.filter((n: { id: string }) => n.id === x.id).length, 1, 'back once, no duplicate');
+  assert.equal(after.pagination.total, start.pagination.total);
+  assert.equal((await call('/alerts/not-a-uuid/archive', { method: 'POST', client: bob })).status, 400);
+});
+
+test('personal notes: one per user per alert, validated, private, kept through archive and restore', async () => {
+  const items = (await call('/notifications?status=all&sort=attention&pageSize=100', { client: bob })).json.items;
+  const y = items[1] ?? items[0];
+  assert.equal((await call(`/alerts/${y.id}/note`, { client: bob })).json.note, null);
+  assert.equal((await call(`/alerts/${y.id}/note`, { method: 'PUT', client: bob, body: { content: '   ' } })).status, 400, 'empty note rejected');
+  assert.equal((await call(`/alerts/${y.id}/note`, { method: 'PUT', client: bob, body: { content: 'x'.repeat(4001) } })).status, 400, 'over-long note rejected');
+
+  const saved = await call(`/alerts/${y.id}/note`, { method: 'PUT', client: bob, body: { content: '  Check margin impact of the new plant  ' } });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.json.note.content, 'Check margin impact of the new plant');
+  const edited = await call(`/alerts/${y.id}/note`, { method: 'PUT', client: bob, body: { content: 'Compare with FY22 capex timeline' } });
+  assert.equal(edited.json.note.content, 'Compare with FY22 capex timeline', 'saving again updates the single note');
+  assert.equal(edited.json.note.createdAt, saved.json.note.createdAt);
+  const listed = (await call('/notifications?status=all&pageSize=100', { client: bob })).json.items.find((n: { id: string }) => n.id === y.id);
+  assert.equal(listed.hasNote, true);
+
+  // Private to the account that wrote it.
+  assert.equal((await call(`/alerts/${y.id}/note`, { client: alice })).status, 404);
+  assert.equal((await call(`/alerts/${y.id}/note`, { method: 'PUT', client: alice, body: { content: 'intrusion' } })).status, 404);
+  assert.equal((await call(`/alerts/${y.id}/note`, { method: 'DELETE', client: alice })).status, 404);
+
+  // Combined: favourite + note survive read, archive and restore.
+  await call(`/notifications/${y.id}/read`, { method: 'PATCH', client: bob, body: { read: false } });
+  await call(`/alerts/${y.id}/favourite`, { method: 'POST', client: bob });
+  await call(`/notifications/${y.id}/read`, { method: 'PATCH', client: bob, body: { read: true } });
+  await call(`/alerts/${y.id}/archive`, { method: 'POST', client: bob });
+  const favs = (await call('/alerts/favourites', { client: bob })).json.items.find((n: { id: string }) => n.id === y.id);
+  assert.ok(favs && favs.archived, 'archived favourites stay listed under Favourites, flagged');
+  await call(`/alerts/${y.id}/restore`, { method: 'POST', client: bob });
+  const back = (await call('/notifications?status=all&pageSize=100', { client: bob })).json.items.find((n: { id: string }) => n.id === y.id);
+  assert.ok(back.readAt && back.favourited && back.hasNote && !back.archived, 'read, favourite and note all preserved');
+  assert.equal((await call(`/alerts/${y.id}/note`, { client: bob })).json.note.content, 'Compare with FY22 capex timeline');
+
+  const del = await call(`/alerts/${y.id}/note`, { method: 'DELETE', client: bob });
+  assert.equal(del.json.deleted, true);
+  assert.equal((await call(`/alerts/${y.id}/note`, { method: 'DELETE', client: bob })).json.deleted, false, 'deleting twice is harmless');
+  assert.equal((await call('/notifications?status=all&pageSize=100', { client: bob })).json.items.find((n: { id: string }) => n.id === y.id).hasNote, false);
+  await call(`/alerts/${y.id}/favourite`, { method: 'DELETE', client: bob });
+});
+
 test('logout revokes the refresh session', async () => {
   const login = await call('/auth/login', { method: 'POST', body: { email: bob.email, password: 'Str0ngPassw0rd!' } });
   const cookie = cookieOf(login.setCookie);

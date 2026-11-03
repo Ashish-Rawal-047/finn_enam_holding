@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, Check, CheckCheck, History } from 'lucide-react';
+import { Archive, ArrowRight, Check, CheckCheck, History, NotebookPen } from 'lucide-react';
 import { Drawer } from '../common/Drawer';
 import { useMarkAllRead, useMarkRead, useNotifications } from '../../lib/queries';
 import { relativeTime } from '../../lib/format';
@@ -9,7 +9,7 @@ import { Pager } from '../../screens/SignalsScreen';
 import { FavouriteButton } from '../home/AlertCard';
 import { CompanyLogo } from '../company/CompanyLogo';
 
-type Status = 'all' | 'unread' | 'read' | 'favourites';
+type Status = 'all' | 'unread' | 'read' | 'favourites' | 'archived';
 
 export const NotificationCenter: React.FC<{
   open: boolean;
@@ -56,6 +56,7 @@ export const NotificationCenter: React.FC<{
             { id: 'unread', label: 'Unread', count: list.data?.unread },
             { id: 'read', label: 'Read', count: list.data?.read },
             { id: 'favourites', label: 'Favourites', count: list.data?.favourites },
+            { id: 'archived', label: 'Archived', count: list.data?.archived, icon: <Archive size={13} strokeWidth={1.75} /> },
           ]}
         />
         <Chips
@@ -99,6 +100,8 @@ export const NotificationCenter: React.FC<{
                         <div className="flex items-center gap-1.5">
                           <CompanyLogo name={n.company.name} nseSymbol={n.company.nseSymbol} size="xs" />
                           <Ticker symbol={n.company.nseSymbol} />
+                          {(n.archived ?? n.archivedAt) && <Archive size={12} className="text-ink-subtle" aria-label="Archived" />}
+                          {n.hasNote && <NotebookPen size={12} className="text-forest dark:text-emerald" aria-label="Has a personal note" />}
                           {n.signal.isDemo && <DemoPill />}
                         </div>
                         <PriorityBadge priority={n.priority} />

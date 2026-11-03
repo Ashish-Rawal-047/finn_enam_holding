@@ -36,6 +36,13 @@
       "when": 1793657054753,
       "tag": "0004_company_logos_and_demo_account",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793665142099,
+      "tag": "0005_alert_archive_and_notes",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import { request } from './api';
 import type {
   AlertPreferences,
   CompanySummary,
+  AlertNote,
   CompanyOverview,
   CorporateEvent,
   DigestResponse,
@@ -43,6 +44,7 @@ export const qk = {
   search: (q: string) => ['search', q] as const,
   research: (id: string, reportId?: string) => ['research', id, reportId ?? 'latest'] as const,
   researchJob: (id: string) => ['research-job', id] as const,
+  alertNote: (id: string) => ['alert-note', id] as const,
   evidence: (id: string, reportId?: string) => ['evidence', id, reportId ?? 'latest'] as const,
   events: (params: Record<string, unknown>) => ['events', params] as const,
   event: (id: string) => ['event', id] as const,
@@ -68,7 +70,7 @@ export const useDigest = (window: DigestWindow, from?: string, to?: string) =>
     refetchInterval: 5 * 60_000,
   });
 
-export type NotificationFilter ='all' | 'unread' | 'read' | 'favourites';
+export type NotificationFilter = 'all' | 'unread' | 'read' | 'favourites' | 'archived';
 
 export const useNotifications = (
   status: NotificationFilter,
@@ -185,9 +187,17 @@ export function useRemoveFromPortfolio() {
   });
 }
 
-type NotificationPage = Paginated<NotificationItem> & { unread: number; read: number; favourites: number };
+type NotificationPage = Paginated<NotificationItem> & { unread: number; read: number; favourites: number; archived: number };
 
-export function useMarkRead() {
+/**
+ * `onFailure` runs at mutation level, so it still fires when the card that started the change has
+ * already left the list (callbacks passed to `mutate()` are dropped once their component unmounts).
+ */
+interface MutationFeedback {
+  onFailure?: () => void;
+}
+
+export function useMarkRead({ onFailure }: MutationFeedback = {}) {
   const qc = useQueryClient();
   const invalidate = useInvalidate();
   return useMutation({
@@ -195,9 +205,15 @@ export function useMarkRead() {
     // Flip the read state instantly; the server-ordered list (read sinks below unread) follows on refetch.
     onMutate: async ({ id, read }) => {
       await qc.cancelQueries({ queryKey: ['notifications'] });
+      const previous = qc.getQueriesData<NotificationPage>({ queryKey: ['notifications'] });
       qc.setQueriesData<NotificationPage>({ queryKey: ['notifications'] }, (page) =>
         page ? { ...page, items: page.items.map((n) => (n.id === id ? { ...n, readAt: read ? n.readAt ?? new Date().toISOString() : null } : n)) } : page,
       );
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.previous.forEach(([key, data]) => qc.setQueryData(key, data));
+      onFailure?.();
     },
     onSettled: () => invalidate(['notifications'], qk.home, qk.portfolio),
   });
@@ -231,6 +247,69 @@ export function useToggleFavourite() {
     onError: (_err, _vars, ctx) => ctx?.previous.forEach(([key, data]) => qc.setQueryData(key, data)),
     onSettled: () => invalidate(['notifications']),
   });
+}
+
+/**
+ * Archive or restore. The alert leaves the list it no longer belongs to at once (it stays, flagged,
+ * under Favourites) and the counts follow; on failure every cached list is restored.
+ */
+export function useArchiveAlert({ onFailure }: MutationFeedback = {}) {
+  const qc = useQueryClient();
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ id, archived }: { id: string; archived: boolean }) => request<{ id: string; archived: boolean }>(`/alerts/${id}/${archived ? 'archive' : 'restore'}`, { method: 'POST' }),
+    onMutate: async ({ id, archived }) => {
+      await qc.cancelQueries({ queryKey: ['notifications'] });
+      const previous = qc.getQueriesData<NotificationPage>({ queryKey: ['notifications'] });
+      const item = previous.flatMap(([, page]) => page?.items ?? []).find((n) => n.id === id);
+      const changes = item && Boolean(item.archived ?? item.archivedAt) !== archived;
+      const step = archived ? -1 : 1; // effect on the active counts
+      for (const [key, page] of previous) {
+        if (!page) continue;
+        const status = key[1] as NotificationFilter;
+        const present = page.items.some((n) => n.id === id);
+        const leaves = present && (status === 'archived' ? !archived : status !== 'favourites' && archived);
+        qc.setQueryData<NotificationPage>(key, {
+          ...page,
+          items: leaves ? page.items.filter((n) => n.id !== id) : page.items.map((n) => (n.id === id ? { ...n, archived, archivedAt: archived ? n.archivedAt ?? new Date().toISOString() : null } : n)),
+          pagination: leaves ? { ...page.pagination, total: Math.max(0, page.pagination.total - 1) } : page.pagination,
+          unread: changes && !item!.readAt ? Math.max(0, page.unread + step) : page.unread,
+          read: changes && item!.readAt ? Math.max(0, page.read + step) : page.read,
+          archived: changes ? Math.max(0, (page.archived ?? 0) - step) : page.archived,
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.previous.forEach(([key, data]) => qc.setQueryData(key, data));
+      onFailure?.();
+    },
+    onSettled: () => invalidate(['notifications'], qk.home, qk.portfolio),
+  });
+}
+
+/** The caller's personal note on an alert (null when there is none). */
+export const useAlertNote = (id: string | null) =>
+  useQuery({ queryKey: qk.alertNote(id ?? ''), queryFn: () => request<{ note: AlertNote | null }>(`/alerts/${id}/note`).then((r) => r.note), enabled: Boolean(id) });
+
+export function useNoteMutations(id: string | null) {
+  const qc = useQueryClient();
+  const invalidate = useInvalidate();
+  // Lists show whether a note exists, so they refresh after every change.
+  const done = (note: AlertNote | null) => {
+    qc.setQueryData(qk.alertNote(id ?? ''), note);
+    return invalidate(['notifications']);
+  };
+  return {
+    save: useMutation({
+      mutationFn: (content: string) => request<{ note: AlertNote }>(`/alerts/${id}/note`, { method: 'PUT', body: { content } }).then((r) => r.note),
+      onSuccess: (note) => done(note),
+    }),
+    remove: useMutation({
+      mutationFn: () => request<{ deleted: boolean }>(`/alerts/${id}/note`, { method: 'DELETE' }),
+      onSuccess: () => done(null),
+    }),
+  };
 }
 
 export function useMarkAllRead() {

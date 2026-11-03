@@ -4,23 +4,34 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Info } from 'lucide-react';
 import { EASE_OUT } from '../motion';
 
+interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface Toast {
   id: number;
   message: string;
   tone: 'success' | 'info';
+  action?: ToastAction;
 }
 
-const ToastContext = createContext<(message: string, tone?: Toast['tone']) => void>(() => undefined);
+type ShowToast = (message: string, tone?: Toast['tone'], action?: ToastAction) => void;
 
-/** Subtle, self-dismissing confirmations ("Added to favourites"). Announced politely to screen readers. */
+const ToastContext = createContext<ShowToast>(() => undefined);
+
+/**
+ * Subtle, self-dismissing confirmations ("Added to favourites"), optionally with one action such
+ * as Undo (shown a little longer). Announced politely to screen readers.
+ */
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const next = useRef(0);
-  const show = useCallback((message: string, tone: Toast['tone'] = 'success') => {
+  const show = useCallback<ShowToast>((message, tone = 'success', action) => {
     const id = ++next.current;
     // One at a time: a newer confirmation replaces the previous one.
-    setToasts([{ id, message, tone }]);
-    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 2400);
+    setToasts([{ id, message, tone, action }]);
+    window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), action ? 5000 : 2400);
   }, []);
   const value = useMemo(() => show, [show]);
 
@@ -45,6 +56,17 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               >
                 {t.tone === 'success' ? <Check size={14} strokeWidth={2.25} className="text-sage dark:text-emerald" /> : <Info size={14} strokeWidth={2} />}
                 {t.message}
+                {t.action && (
+                  <button
+                    onClick={() => {
+                      t.action!.onClick();
+                      setToasts((all) => all.filter((x) => x.id !== t.id));
+                    }}
+                    className="-my-1 ml-1 min-h-[32px] rounded-full px-2.5 text-[12.5px] font-semibold text-sage underline-offset-2 hover:underline dark:text-emerald"
+                  >
+                    {t.action.label}
+                  </button>
+                )}
               </motion.div>
             ))}
           </AnimatePresence>

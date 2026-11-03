@@ -205,7 +205,7 @@ export function Chips<T extends string>({
   onChange,
   ariaLabel,
 }: {
-  options: Array<{ id: T; label: string; count?: number }>;
+  options: Array<{ id: T; label: string; count?: number; icon?: React.ReactNode }>;
   value: T;
   onChange: (v: T) => void;
   ariaLabel: string;
@@ -219,16 +219,21 @@ export function Chips<T extends string>({
             key={o.id}
             role="tab"
             aria-selected={active}
-            onClick={() => onChange(o.id)}
+            onClick={(e) => {
+              onChange(o.id);
+              // In a sideways-scrolling row, bring the chosen chip fully into view.
+              e.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+            }}
             className={cx(
-              'shrink-0 min-h-[34px] rounded-full border px-3.5 text-[12.5px] font-medium whitespace-nowrap transition-colors duration-200',
+              'inline-flex shrink-0 min-h-[34px] items-center gap-1.5 rounded-full border px-3.5 text-[12.5px] font-medium whitespace-nowrap transition-colors duration-200',
               active
                 ? 'border-forest bg-forest text-white dark:border-emerald dark:bg-emerald dark:text-ink-bg'
                 : 'border-divider dark:border-ink-border bg-paper dark:bg-ink-surface text-ink-muted hover:border-ink-subtle hover:text-ink dark:hover:text-white',
             )}
           >
+            {o.icon}
             {o.label}
-            {o.count !== undefined && <span className={cx('ml-1.5 font-mono text-[10.5px]', active ? 'opacity-80' : 'text-ink-subtle')}>{o.count}</span>}
+            {o.count !== undefined && <span className={cx('font-mono text-[10.5px]', active ? 'opacity-80' : 'text-ink-subtle')}>{o.count}</span>}
           </button>
         );
       })}

@@ -29,7 +29,7 @@ import {
 } from '../services/events.js';
 import { forbidDemo, isDemoAccount } from '../services/demo.js';
 import { DIGEST_WINDOWS, getDigest } from '../services/digest.js';
-import { listNotifications, markAllRead, markRead, setFavourite } from '../services/notifications.js';
+import { deleteNote, getNote, listNotifications, markAllRead, markRead, saveNote, setArchived, setFavourite } from '../services/notifications.js';
 import { getPortfolio } from '../services/portfolio.js';
 import { getEvidence, getLatestReport } from '../services/research.js';
 import { activeResearchJob, getResearchJob, startResearchJob } from '../services/researchJobs.js';
@@ -184,14 +184,14 @@ intelRouter.get(
   handle(async (req, res) => {
     const q = parse(
       paginationQuery.extend({
-        status: z.enum(['all', 'unread', 'read', 'favourites']).default('all'),
+        status: z.enum(['all', 'unread', 'read', 'favourites', 'archived']).default('all'),
         priority: priority.optional(),
         sort: z.enum(['recent', 'attention']).default('recent'),
       }),
       req.query,
     );
-    const { total, unread, read, favourites, items } = await listNotifications(userId(req), { ...q, limit: q.pageSize, offset: (q.page - 1) * q.pageSize });
-    res.json({ ...paginated(items, total, q), unread, read, favourites });
+    const { total, unread, read, favourites, archived, items } = await listNotifications(userId(req), { ...q, limit: q.pageSize, offset: (q.page - 1) * q.pageSize });
+    res.json({ ...paginated(items, total, q), unread, read, favourites, archived });
   }),
 );
 
@@ -200,8 +200,57 @@ intelRouter.get(
   '/alerts/favourites',
   handle(async (req, res) => {
     const q = parse(paginationQuery.extend({ sort: z.enum(['recent', 'attention']).default('attention') }), req.query);
-    const { total, unread, read, favourites, items } = await listNotifications(userId(req), { ...q, status: 'favourites', limit: q.pageSize, offset: (q.page - 1) * q.pageSize });
-    res.json({ ...paginated(items, total, q), unread, read, favourites });
+    const { total, unread, read, favourites, archived, items } = await listNotifications(userId(req), { ...q, status: 'favourites', limit: q.pageSize, offset: (q.page - 1) * q.pageSize });
+    res.json({ ...paginated(items, total, q), unread, read, favourites, archived });
+  }),
+);
+
+// Archived alerts: out of the active feed, never deleted ("alertId" is the user's notification id).
+intelRouter.get(
+  '/alerts/archived',
+  handle(async (req, res) => {
+    const q = parse(paginationQuery, req.query);
+    const { total, unread, read, favourites, archived, items } = await listNotifications(userId(req), { ...q, status: 'archived', limit: q.pageSize, offset: (q.page - 1) * q.pageSize });
+    res.json({ ...paginated(items, total, q), unread, read, favourites, archived });
+  }),
+);
+
+intelRouter.post(
+  '/alerts/:alertId/archive',
+  handle(async (req, res) => {
+    res.json(await setArchived(userId(req), parse(uuidParam, req.params.alertId), true));
+  }),
+);
+
+intelRouter.post(
+  '/alerts/:alertId/restore',
+  handle(async (req, res) => {
+    res.json(await setArchived(userId(req), parse(uuidParam, req.params.alertId), false));
+  }),
+);
+
+// Personal notes: one per user per alert, visible only to the account that wrote it.
+const noteBody = z.object({ content: z.string().trim().min(1, 'Write a note first').max(4000, 'Notes are limited to 4,000 characters') });
+
+intelRouter.get(
+  '/alerts/:alertId/note',
+  handle(async (req, res) => {
+    res.json({ note: await getNote(userId(req), parse(uuidParam, req.params.alertId)) });
+  }),
+);
+
+intelRouter.put(
+  '/alerts/:alertId/note',
+  handle(async (req, res) => {
+    const { content } = parse(noteBody, req.body);
+    res.json({ note: await saveNote(userId(req), parse(uuidParam, req.params.alertId), content) });
+  }),
+);
+
+intelRouter.delete(
+  '/alerts/:alertId/note',
+  handle(async (req, res) => {
+    res.json(await deleteNote(userId(req), parse(uuidParam, req.params.alertId)));
   }),
 );
 
@@ -377,7 +426,7 @@ intelRouter.get(
       .from(notifications)
       .innerJoin(signals, eq(signals.id, notifications.signalId))
       .innerJoin(companies, eq(companies.id, signals.companyId))
-      .where(and(eq(notifications.userId, id), isNull(notifications.readAt)))
+      .where(and(eq(notifications.userId, id), isNull(notifications.readAt), isNull(notifications.archivedAt)))
       .orderBy(desc(notifications.createdAt))
       .limit(200);
     // Rank by materiality: priority first, then the signal's materiality score, then recency.

@@ -93,12 +93,19 @@ Codes:
 ## Notifications and settings
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/notifications?status=all\|unread\|read\|favourites&priority=&sort=recent\|attention` | Paginated, with `total`, `unread`, `read` and `favourites` counts. Each item has `favourited` / `favouritedAt`. `attention`: unread first (priority, materiality, recency), then read by `readAt` desc. Read notifications are never removed. Each item has `categoryLabel` and `historicalMatch` (`{ eventId, title, company, sameCompany, score, outcome, explanation }` or `null`) |
+| GET | `/notifications?status=all\|unread\|read\|favourites\|archived&priority=&sort=recent\|attention` | Paginated, with `total`, `unread`, `read`, `favourites` and `archived` counts. `all`, `unread` and `read` (and their counts) cover the active feed only; `favourites` includes archived favourites (flagged); `archived` lists archived alerts, newest archive first. Each item has `favourited` / `favouritedAt`, `archived` / `archivedAt` and `hasNote` / `noteUpdatedAt`. `attention`: unread first (priority, materiality, recency), then read by `readAt` desc. Read notifications are never removed. Each item has `categoryLabel` and `historicalMatch` (`{ eventId, title, company, sameCompany, score, outcome, explanation }` or `null`) |
 | PATCH | `/notifications/:id/read` | `{ read: true\|false }` (owner only); the first `readAt` is kept |
 | POST | `/notifications/read-all` | Marks all read; nothing is hidden |
 | GET | `/alerts/favourites?page=&pageSize=&sort=attention\|recent` | Your bookmarked alerts, read and unread, in the normal order, with the same counts as `/notifications` |
 | POST | `/alerts/:alertId/favourite` | Bookmark an alert (`alertId` is your notification id). Idempotent; changes nothing else (read state, priority, order). `{ id, favourited: true, favouritedAt, readAt }`; another user's id is `404` |
 | DELETE | `/alerts/:alertId/favourite` | Remove the bookmark. Idempotent. `{ id, favourited: false, favouritedAt: null, readAt }` |
+| GET | `/alerts/archived?page=&pageSize=` | Your archived alerts, newest archive first, with the same counts as `/notifications` |
+| POST | `/alerts/:alertId/archive` | Move an alert out of the active feed. Idempotent (the first archive time is kept); never deletes; read state, favourite, note and evidence are unchanged. `{ id, archived: true, archivedAt, readAt, favourited, favouritedAt }`; another user's id is `404` |
+| POST | `/alerts/:alertId/restore` | Return it to the active feed, unchanged otherwise. Idempotent. `{ id, archived: false, archivedAt: null, … }` |
+| GET | `/alerts/:alertId/note` | `{ note: { content, createdAt, updatedAt } \| null }` — your personal note on the alert |
+| PUT | `/alerts/:alertId/note` | `{ content }` (trimmed, 1–4,000 characters) creates or replaces your note (one per user per alert) → `{ note }` |
+| DELETE | `/alerts/:alertId/note` | Deletes your note → `{ deleted: true\|false }` (idempotent). Notes on another user's alert are `404` for every method |
+| POST | `/notifications/read-all` | (unchanged) marks the **active** feed read; archived alerts keep their read state |
 | POST | `/notifications/live` | `{ url, sealed }` Neon Realtime capability for your notifications, or `503` when Realtime is off |
 | GET / PATCH | `/settings` | Profile: `fullName`, `timezone` (validated IANA zone), `bio`, `theme` |
 | GET / PATCH | `/settings/alerts` | `priceMoveThresholdPct` (1–20, default 2.5), `volumeSurgeMultiple` (1.5–10), `announcementCategories[]`, `managementChangeAlerts`, `financialResultAlerts`, `eventAlerts`, `minimumPriority`, `inAppNotifications`. PATCH re-runs the alert engine and returns `newNotifications`. |

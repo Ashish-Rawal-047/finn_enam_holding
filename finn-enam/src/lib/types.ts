@@ -197,10 +197,22 @@ export interface NotificationItem {
   /** Per-user bookmark; independent of read state, priority and order. */
   favouritedAt?: string | null;
   favourited?: boolean;
+  /** Archived: out of the active feed, never deleted; independent of read and favourite state. */
+  archivedAt?: string | null;
+  archived?: boolean;
+  /** The user's personal note on this alert exists (its text is fetched separately). */
+  hasNote?: boolean;
+  noteUpdatedAt?: string | null;
   createdAt: string;
   signal: Pick<Signal, 'id' | 'type' | 'category' | 'materialityScore' | 'occurredAt' | 'isDemo'> & Partial<Pick<Signal, 'metrics' | 'evidence' | 'detectedAt' | 'categoryLabel' | 'eventId'>>;
   company: CompanySummary;
   historicalMatch?: HistoricalMatch | null;
+}
+
+export interface AlertNote {
+  content: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface HomeResponse {
