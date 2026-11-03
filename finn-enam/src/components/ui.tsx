@@ -17,14 +17,17 @@ export const ICON = { sm: 14, md: 16, lg: 18, stroke: 1.75 } as const;
 // Surfaces & typography
 // ---------------------------------------------------------------------------
 
-export const Panel: React.FC<{
-  children: React.ReactNode;
-  className?: string;
-  padded?: boolean;
-  interactive?: boolean;
-  as?: 'div' | 'section';
-}> = ({ children, className, padded = true, interactive, as: Tag = 'div' }) => (
+export const Panel: React.FC<
+  {
+    children: React.ReactNode;
+    className?: string;
+    padded?: boolean;
+    interactive?: boolean;
+    as?: 'div' | 'section';
+  } & Omit<React.HTMLAttributes<HTMLElement>, 'className' | 'children'>
+> = ({ children, className, padded = true, interactive, as: Tag = 'div', ...rest }) => (
   <Tag
+    {...rest}
     className={cx(
       'rounded-card border border-divider dark:border-ink-border bg-paper dark:bg-ink-surface',
       padded && 'p-4',

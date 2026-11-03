@@ -17,7 +17,8 @@ import { CreateEventSheet } from './components/memory/CreateEventSheet';
 import { NotificationCenter } from './components/notifications/NotificationCenter';
 import { FinnLogo } from './components/common/FinnLogo';
 import { LiveNotifications, useUnreadCount, type LiveMode } from './lib/live';
-import { usePortfolio } from './lib/queries';
+import { useActiveResearchJobs, usePortfolio } from './lib/queries';
+import { ResearchJobWatcher } from './components/research/ResearchJobWatcher';
 import { LoadingBlock, Spinner } from './components/ui';
 
 // Research (charts, analysis, Ask FINN) loads on demand and is prefetched once the app is idle.
@@ -169,7 +170,23 @@ function Shell({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void
   const [eventId, setEventId] = useState<string | null>(initial.eventId);
   const [compareWith, setCompareWith] = useState<string | null>(initial.compareWith);
   const [memoryFocus, setMemoryFocus] = useState<string | null>(null);
-  const [researchCompanyId, setResearchCompanyId] = useState<string | null>(null);
+  // The company open in Research survives a reload of this tab (its research job runs on the server).
+  const [researchCompanyId, setResearchCompanyId] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem('finn-research-company');
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    try {
+      if (researchCompanyId) sessionStorage.setItem('finn-research-company', researchCompanyId);
+      else sessionStorage.removeItem('finn-research-company');
+    } catch {
+      /* storage unavailable */
+    }
+  }, [researchCompanyId]);
+  const activeResearch = useActiveResearchJobs();
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [creatingEvent, setCreatingEvent] = useState(false);
   const [liveMode, setLiveMode] = useState<LiveMode>('connecting');
@@ -242,11 +259,12 @@ function Shell({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void
     if (tab === 'memory') navigate({ tab: 'memory', eventId: null, compareWith: null }, true);
   };
 
-  const badges = { signals: companiesWithAlerts };
+  const badges = { signals: companiesWithAlerts, research: activeResearch.data?.length ?? 0 };
 
   return (
     <MotionConfig reducedMotion="user">
       <LiveNotifications onMode={onMode} />
+      <ResearchJobWatcher onOpen={openResearch} />
       <AppShell
         screenKey={tab}
         header={

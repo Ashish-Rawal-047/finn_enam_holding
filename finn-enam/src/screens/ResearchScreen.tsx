@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AlertCircle, Check, ChevronDown, ChevronRight, CloudDownload, ExternalLink, FileText, Globe, Minus, RefreshCw, Search, Sparkles, X } from 'lucide-react';
-import { useCompanySearch, useEvidence, useFinancialAnalysis, useHealth, useImportCompany, usePortfolio, useRefreshCompany, useResearch, useResearchJob, useStartResearch } from '../lib/queries';
+import { useActiveResearchJobs, useCompanySearch, useEvidence, useFinancialAnalysis, useHealth, useImportCompany, usePortfolio, useRefreshCompany, useResearch, useResearchJob, useStartResearch } from '../lib/queries';
 import { dateTime, humanize, inr, relativeTime, shortDate } from '../lib/format';
-import type { Claim, FinancialAnalysis, Freshness, Quote, ResearchJob, ResearchReport, ResearchResponse, ResearchSection, SectionKey, SectionProgress } from '../lib/types';
-import { useToast } from '../components/common/Toast';
+import type { ActiveResearchJob, Claim, FinancialAnalysis, ResearchJobSummary, Freshness, Quote, ResearchJob, ResearchReport, ResearchResponse, ResearchSection, SectionKey, SectionProgress } from '../lib/types';
 import { IntelligenceOverview, InsightCards, SourceLine } from '../components/research/Overview';
 import { FinnIntelligence } from '../components/research/FinnIntelligence';
 import { ResearchCharts } from '../components/research/ResearchCharts';
@@ -45,44 +44,40 @@ export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, on
   const [term, setTerm] = useState('');
   const [debounced, setDebounced] = useState('');
   const [reportId, setReportId] = useState<string | undefined>();
-  const [jobId, setJobId] = useState<string | null>(null);
+  // Only the id of a job this screen just started, until the server lists it (see `jobId` below).
+  const [startedJobId, setStartedJobId] = useState<string | null>(null);
   useEffect(() => {
     const t = setTimeout(() => setDebounced(term), 300);
     return () => clearTimeout(t);
   }, [term]);
   useEffect(() => {
     setReportId(undefined);
-    setJobId(null);
+    setStartedJobId(null);
   }, [companyId]);
 
   const search = useCompanySearch(debounced);
   const importCompany = useImportCompany();
   const research = useResearch(companyId, reportId);
   const start = useStartResearch(companyId);
+  const activeJobs = useActiveResearchJobs();
+  // Research runs on the server, independent of this screen. Leaving the tab, or reloading, never
+  // stops it; on return the job is found again from the server: in the app-wide list of active
+  // jobs, in this company's research data, or from the request just made.
+  const jobId = activeJobs.data?.find((j) => j.companyId === companyId)?.id ?? research.data?.activeJob?.id ?? startedJobId;
   const job = useResearchJob(jobId, companyId);
   const refresh = useRefreshCompany(companyId);
   const health = useHealth();
   const analysis = useFinancialAnalysis(companyId);
   const aiConfigured = Boolean(health.data?.ai.configured);
-  const toast = useToast();
   const report = research.data?.report ?? null;
 
-  // A job started before a reload (or in another tab) is picked up and shown in progress.
-  const activeJobId = research.data?.activeJob?.id;
-  useEffect(() => {
-    if (activeJobId && !jobId) setJobId(activeJobId);
-  }, [activeJobId, jobId]);
-
-  const current = job.data;
+  const current = job.data?.companyId === companyId ? job.data : undefined;
   const running = start.isPending || Boolean(current && (current.status === 'queued' || current.status === 'running'));
-  const finished = current?.status === 'succeeded' ? current.id : null;
+  // When this company's job ends, show the newest report. (The completion notice is app-wide.)
   useEffect(() => {
-    if (!finished || !current) return;
-    setReportId(current.reportId ?? undefined);
-    setJobId(null);
-    toast(current.reused ? 'Research is up to date — nothing changed since the last report' : 'Research report ready');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [finished]);
+    if (current?.status === 'succeeded') setReportId(undefined);
+    if (current?.status === 'succeeded' || current?.status === 'failed') setStartedJobId(null);
+  }, [current?.id, current?.status]);
 
   const pickExternal = (symbol: string) =>
     importCompany.mutate(symbol, {
@@ -92,7 +87,11 @@ export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, on
       },
     });
 
-  const run = (mode: 'generate' | 'refresh') => start.mutate({ mode }, { onSuccess: (r) => setJobId(r.job.id) });
+  const run = (mode: 'generate' | 'refresh', refreshData = false) => start.mutate({ mode, refreshData }, { onSuccess: (r) => setStartedJobId(r.job.id) });
+  /** Repeats a failed job the same way it was first requested. */
+  const retry = (mode: ResearchJobSummary['mode']) => (mode === 'generate' ? run('generate') : run('refresh', mode === 'refresh_all'));
+  // The screen's own job record is fresher than the summary in the research data while it refetches.
+  const latestJob = current && (current.status === 'succeeded' || current.status === 'failed') && (!research.data?.latestJob || current.createdAt >= research.data.latestJob.createdAt) ? { ...current, updatedAt: current.finishedAt ?? current.createdAt } : (research.data?.latestJob ?? null);
 
   return (
     <div className="space-y-5 pt-5">
@@ -208,7 +207,10 @@ export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, on
       )}
 
       {!companyId ? (
-        <PortfolioPicks onPick={onSelectCompany} />
+        <>
+          <ActiveResearchList jobs={activeJobs.data ?? []} onPick={onSelectCompany} />
+          <PortfolioPicks onPick={onSelectCompany} />
+        </>
       ) : research.isLoading ? (
         <LoadingBlock rows={5} />
       ) : research.isError || !research.data ? (
@@ -252,7 +254,7 @@ export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, on
           </div>
           {refresh.isError && <ErrorState error={refresh.error} />}
           {start.isError && <ErrorState error={start.error} />}
-          {current?.status === 'failed' && <ErrorState error={new Error(current.error ?? 'Research generation failed.')} onRetry={() => run(report ? 'refresh' : 'generate')} />}
+          {!running && <ResearchStatus latest={latestJob} report={report} viewingOlder={Boolean(reportId)} onRetry={retry} />}
           {!health.data?.ai.configured && (
             <p className="text-[11.5px] leading-relaxed text-ink-muted">
               AI is not configured ({health.data?.ai.reason ?? 'no provider'}). Reports contain reported facts and calculated metrics; AI sections are marked unavailable until an AI key is added on the server.
@@ -260,7 +262,14 @@ export const ResearchScreen: React.FC<Props> = ({ companyId, onSelectCompany, on
           )}
 
           <AnimatePresence>
-            {running && <AnalysisProgress job={current ?? null} companyName={research.data.company.name} aiLabel={health.data?.ai.configured ? health.data.ai.label : null} />}
+            {running && (
+              <AnalysisProgress
+                job={current ?? null}
+                companyName={research.data.company.name}
+                ticker={research.data.company.yahooSymbol ?? research.data.company.nseSymbol ?? null}
+                aiLabel={health.data?.ai.configured ? health.data.ai.label : null}
+              />
+            )}
           </AnimatePresence>
 
           {running ? (
@@ -397,7 +406,7 @@ const liveReport = (job: ResearchJob): ResearchReport => ({
   createdAt: job.createdAt,
 });
 
-const AnalysisProgress: React.FC<{ job: ResearchJob | null; companyName: string; aiLabel: string | null }> = ({ job, companyName, aiLabel }) => {
+const AnalysisProgress: React.FC<{ job: ResearchJob | null; companyName: string; ticker: string | null; aiLabel: string | null }> = ({ job, companyName, ticker, aiLabel }) => {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const started = job ? new Date(job.createdAt).getTime() : Date.now();
@@ -420,10 +429,14 @@ const AnalysisProgress: React.FC<{ job: ResearchJob | null; companyName: string;
             <span className="absolute inset-0 animate-ping rounded-full bg-forest/10 dark:bg-emerald/10" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="font-serif text-[19px] leading-tight text-forest-dark dark:text-white">FINN Intelligence is analyzing {companyName}…</div>
+            <div className="font-serif text-[19px] leading-tight text-forest-dark dark:text-white">{job?.status === 'queued' ? 'Research queued…' : 'Research in progress…'}</div>
             <div className="mt-0.5 text-[11.5px] text-ink-muted">
-              {aiLabel ? `${aiLabel} · ` : 'Facts and metrics only (AI not configured) · '}
-              <span className="font-mono">{elapsed}s</span>
+              {companyName}
+              {ticker ? ` · ${ticker}` : ''} · <span className="font-mono">{elapsed}s</span>
+            </div>
+            <div className="mt-0.5 text-[11px] text-ink-subtle">
+              {job?.status === 'queued' ? 'Waiting for another research job to finish' : aiLabel ? aiLabel : 'Facts and metrics only (AI not configured)'}
+              {' · continues if you leave this screen'}
             </div>
           </div>
         </div>
@@ -443,11 +456,69 @@ const AnalysisProgress: React.FC<{ job: ResearchJob | null; companyName: string;
             ))}
           </div>
         )}
-        <p className="text-[11px] text-ink-muted">Sections appear as they complete. You can keep using FINN — progress continues in the background.</p>
+        <p className="text-[11px] text-ink-muted">Sections appear as they complete.</p>
       </Panel>
     </motion.div>
   );
 };
+
+/** The latest finished job for this company: completed time, or the failure with Retry. */
+const ResearchStatus: React.FC<{ latest: ResearchJobSummary | null; report: ResearchReport | null; viewingOlder: boolean; onRetry: (mode: ResearchJobSummary['mode']) => void }> = ({
+  latest,
+  report,
+  viewingOlder,
+  onRetry,
+}) => {
+  if (!latest) return null;
+  // A failure matters until a newer report exists (e.g. someone else refreshed it since).
+  if (latest.status === 'failed' && (!report || new Date(latest.createdAt) > new Date(report.createdAt))) {
+    return (
+      <div role="alert" className="space-y-2 rounded-xl border border-fin-red/25 bg-fin-red/[0.04] p-3 text-[12.5px]">
+        <div className="flex items-start gap-2 text-ink dark:text-ink-light">
+          <AlertCircle size={15} className="mt-px shrink-0 text-fin-red" />
+          <span>
+            <span className="font-semibold">Research failed.</span> {latest.error ?? 'Please try again.'}
+          </span>
+        </div>
+        <button onClick={() => onRetry(latest.mode)} className="inline-flex min-h-[36px] items-center gap-1.5 text-[12.5px] font-semibold text-forest dark:text-emerald">
+          <RefreshCw size={13} /> Retry research
+        </button>
+      </div>
+    );
+  }
+  if (latest.status === 'succeeded' && latest.finishedAt && !viewingOlder) {
+    return (
+      <p className="flex items-center gap-1.5 text-[11.5px] text-ink-muted" role="status">
+        <Check size={13} strokeWidth={2.25} className="text-forest dark:text-emerald" />
+        Research completed · {dateTime(latest.finishedAt)}
+        {latest.reused ? ' · no new data since the previous report' : ''}
+      </p>
+    );
+  }
+  return null;
+};
+
+/** Research still running for other companies (after a reload or from another device). */
+const ActiveResearchList: React.FC<{ jobs: ActiveResearchJob[]; onPick: (companyId: string) => void }> = ({ jobs, onPick }) =>
+  jobs.length === 0 ? null : (
+    <section className="space-y-2" aria-label="Research in progress">
+      <Eyebrow>In progress</Eyebrow>
+      <ul className="divide-y divide-divider overflow-hidden rounded-card border border-divider bg-paper dark:divide-ink-border dark:border-ink-border dark:bg-ink-surface">
+        {jobs.map((j) => (
+          <li key={j.id}>
+            <button onClick={() => onPick(j.companyId)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-cream-light dark:hover:bg-ink-surfaceSubtle">
+              <Spinner size={14} className="shrink-0 text-forest dark:text-emerald" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13.5px] font-medium text-ink dark:text-white">{j.company.name}</span>
+                <span className="text-[11px] text-ink-muted">{j.status === 'queued' ? 'Queued' : 'Research in progress'} · {j.company.nseSymbol ?? j.company.yahooSymbol}</span>
+              </span>
+              <ChevronRight size={16} strokeWidth={1.75} className="shrink-0 text-ink-subtle" />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 
 const SectionChip: React.FC<{ letter: string; title: string; state: SectionProgress }> = ({ letter, title, state }) => (
   <span

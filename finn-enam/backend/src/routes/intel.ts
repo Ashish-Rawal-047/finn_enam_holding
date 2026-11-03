@@ -33,7 +33,7 @@ import { deleteNote, getNote, listNotifications, markAllRead, markRead, saveNote
 import { getPortfolio } from '../services/portfolio.js';
 import { askResearch, getEvidence, getFinancialAnalysis, getLatestReport } from '../services/research.js';
 import { rateLimit } from '../middleware/rateLimit.js';
-import { activeResearchJob, getResearchJob, startResearchJob } from '../services/researchJobs.js';
+import { activeResearchJob, getResearchJob, latestResearchJob, listActiveResearchJobs, startResearchJob } from '../services/researchJobs.js';
 
 export const intelRouter = Router();
 
@@ -42,7 +42,15 @@ export const intelRouter = Router();
 // ---------------------------------------------------------------------------
 const reportQuery = z.object({ reportId: z.string().uuid().optional() });
 
-// Job status first: '/research/jobs/:id' must not be read as a company id.
+// Job routes first: '/research/jobs/...' must not be read as a company id.
+/** Your queued and running research jobs (any company), for app-wide progress. */
+intelRouter.get(
+  '/research/jobs/active',
+  handle(async (req, res) => {
+    res.json({ jobs: await listActiveResearchJobs(userId(req)) });
+  }),
+);
+
 intelRouter.get(
   '/research/jobs/:jobId',
   handle(async (req, res) => {
@@ -55,8 +63,8 @@ intelRouter.get(
   handle(async (req, res) => {
     const companyId = parse(uuidParam, req.params.companyId);
     const { reportId } = parse(reportQuery, req.query);
-    const [latest, activeJob] = await Promise.all([getLatestReport(companyId, reportId), activeResearchJob(companyId, userId(req))]);
-    res.json({ ...latest, activeJob });
+    const [latest, activeJob, latestJob] = await Promise.all([getLatestReport(companyId, reportId), activeResearchJob(companyId, userId(req)), latestResearchJob(companyId, userId(req))]);
+    res.json({ ...latest, activeJob, latestJob });
   }),
 );
 

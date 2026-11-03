@@ -377,6 +377,28 @@ export interface ResearchResponse {
   history: Array<{ id: string; generator: string; status: string; createdAt: string; isDemo: boolean }>;
   /** The signed-in user's in-flight research job for this company, if any. */
   activeJob?: ResearchJob | null;
+  /** The signed-in user's most recent job for this company, finished or not. */
+  latestJob?: ResearchJobSummary | null;
+}
+
+/** A research job's status without its partial sections. */
+export interface ResearchJobSummary {
+  id: string;
+  companyId: string;
+  status: ResearchJob['status'];
+  stage: ResearchJob['stage'];
+  mode: ResearchJob['mode'];
+  error: string | null;
+  reportId: string | null;
+  reused: boolean;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+}
+
+/** One of the user's queued or running jobs, with its company (app-wide tracking). */
+export interface ActiveResearchJob extends ResearchJobSummary {
+  company: { id: string; name: string; nseSymbol: string | null; yahooSymbol: string | null };
 }
 
 export interface EvidenceResponse {

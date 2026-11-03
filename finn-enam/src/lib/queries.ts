@@ -4,7 +4,7 @@
  */
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { request } from './api';
-import type { AskResult, FinancialAnalysis,
+import type { ActiveResearchJob, AskResult, FinancialAnalysis,
   AlertPreferences,
   CompanySummary,
   AlertNote,
@@ -45,6 +45,7 @@ export const qk = {
   research: (id: string, reportId?: string) => ['research', id, reportId ?? 'latest'] as const,
   financials: (id: string) => ['financials', id] as const,
   researchJob: (id: string) => ['research-job', id] as const,
+  activeResearchJobs: ['research-jobs', 'active'] as const,
   alertNote: (id: string) => ['alert-note', id] as const,
   evidence: (id: string, reportId?: string) => ['evidence', id, reportId ?? 'latest'] as const,
   events: (params: Record<string, unknown>) => ['events', params] as const,
@@ -130,6 +131,21 @@ export const useResearch = (companyId: string | null, reportId?: string) =>
     queryKey: qk.research(companyId ?? '', reportId),
     queryFn: () => request<ResearchResponse>(`/research/${companyId}`, { query: { reportId } }),
     enabled: Boolean(companyId),
+    // Always re-read on return: a job may have started, progressed or finished meanwhile.
+    staleTime: 0,
+  });
+
+/**
+ * The signed-in user's queued and running research jobs, for app-wide tracking (Research tab
+ * badge, completion notices). Polls only while at least one job is active.
+ */
+export const useActiveResearchJobs = () =>
+  useQuery({
+    queryKey: qk.activeResearchJobs,
+    queryFn: async () => (await request<{ jobs: ActiveResearchJob[] }>('/research/jobs/active')).jobs,
+    refetchInterval: (q) => (q.state.data && q.state.data.length > 0 ? 2500 : false),
+    refetchIntervalInBackground: true,
+    staleTime: 0,
   });
 
 /** Charts, assessments and period comparisons computed from the stored statements (no AI). */
@@ -375,9 +391,12 @@ export function useWatchlistMutations() {
  * regenerates the AI analysis from cached data (or refetches data too with `refreshData`).
  */
 export function useStartResearch(companyId: string | null) {
+  const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (opts: { mode: 'generate' | 'refresh'; refreshData?: boolean }) =>
       request<{ job: ResearchJob; deduplicated: boolean }>(`/research/${companyId}/${opts.mode}`, { method: 'POST', body: { refreshData: Boolean(opts.refreshData) } }),
+    // The job is tracked app-wide from now on, whichever screen is open.
+    onSuccess: () => invalidate(qk.activeResearchJobs, ['research', companyId ?? '']),
   });
 }
 
@@ -388,6 +407,8 @@ export function useResearchJob(jobId: string | null, companyId: string | null) {
     queryKey: qk.researchJob(jobId ?? ''),
     queryFn: async () => {
       const { job } = await request<{ job: ResearchJob }>(`/research/jobs/${jobId}`);
+      // Finished: update the app-wide list (badge, notice) at once instead of on its next poll.
+      if (job.status === 'succeeded' || job.status === 'failed') void invalidate(qk.activeResearchJobs, ['research', companyId ?? '']);
       if (job.status === 'succeeded') await invalidate(['research', companyId ?? ''], ['financials', companyId ?? ''], ['evidence', companyId ?? ''], ['history', companyId ?? ''], ['overview', companyId ?? ''], qk.portfolio);
       return job;
     },
