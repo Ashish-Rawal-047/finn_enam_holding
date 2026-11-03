@@ -46,20 +46,6 @@ services:
         value: gemini-3.5-flash
       - key: AI_EMBEDDING_MODEL
         value: gemini-embedding-001
-      # --- AI fallback (OpenAI, Responses API): used only when Gemini is rate-limited, out of quota
-      # or unavailable. Stays off until OPENAI_API_KEY is entered in the Render dashboard.
-      - key: AI_FALLBACK_PROVIDER
-        value: openai
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_MODEL
-        value: gpt-5.4-mini
-      - key: OPENAI_REASONING_MODEL
-        value: gpt-5.4-mini
-      - key: OPENAI_PRICE_INPUT_PER_MTOK # USD per million tokens, for cost estimates
-        value: "0.75"
-      - key: OPENAI_PRICE_OUTPUT_PER_MTOK
-        value: "4.5"
       # --- reviewer demo account (public credentials, demo data only)
       - key: DEMO_MODE_ENABLED
         value: "true"

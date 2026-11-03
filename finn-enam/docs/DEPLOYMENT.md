@@ -25,15 +25,10 @@ GitHub (main) ──► Vercel   frontend (static Vite build)  ──/api/*─�
 | `NEON_REALTIME_URL`, `NEON_REALTIME_SECRET` | optional; without them notifications poll every 30 s | yes |
 | `DEMO_USER_PASSWORD` | reviewer demo password (public by design, must match `VITE_DEMO_PASSWORD`) | entered in dashboard |
 | `AI_PROVIDER`, `AI_MODEL`, `AI_REASONING_MODEL`, `AI_EMBEDDING_MODEL` | `google`, `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-embedding-001` | no (in `render.yaml`) |
-| `OPENAI_API_KEY` | OpenAI API key for the fallback provider (needs API credits) | yes |
-| `AI_FALLBACK_PROVIDER`, `OPENAI_MODEL`, `OPENAI_REASONING_MODEL` | `openai`, `gpt-5.4-mini`, `gpt-5.4-mini` — the fallback stays off until `OPENAI_API_KEY` is set | no (in `render.yaml`) |
-| `OPENAI_PRICE_INPUT_PER_MTOK`, `OPENAI_PRICE_OUTPUT_PER_MTOK` | estimated USD per million tokens (`0.75`, `4.5`), for cost tracking in `ai_usage` | no |
 | `DEMO_MODE_ENABLED`, `DEMO_USER_EMAIL`, `DEMO_USER_NAME` | `true`, `reviewer@finn.demo`, `Reviewer` | no |
 | `CORS_ORIGINS` | the Vercel production URL | no |
 | `NODE_ENV`, `SERVE_FRONTEND`, `ENABLE_SCHEDULER` | `production`, `false`, `true` | no |
 | `LOGO_DEV_TOKEN` | optional, higher-resolution logos | yes |
-
-**AI providers.** Gemini is the primary provider. OpenAI takes over a request only when Gemini is rate-limited, out of quota, overloaded or unreachable (never for a bad key, an unknown model or a malformed answer), with bounded attempts; the same prompts, output schemas, citation checks and figure checks apply to both. Embeddings always use Gemini. The startup log shows `AI provider check` and `AI fallback (openai)`; `GET /api/ai/status` shows both providers and `GET /api/ai/usage` shows usage per provider and model.
 
 The full list with defaults is in `backend/.env.example`. The app's names differ from some common conventions: the Gemini key is `AI_API_KEY` with `AI_PROVIDER=google` (not `GEMINI_API_KEY`), and the allowed frontend origin is `CORS_ORIGINS` (not `FRONTEND_URL`).
 

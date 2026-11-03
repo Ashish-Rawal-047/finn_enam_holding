@@ -1,8 +1,6 @@
 /**
  * AI service layer. Provider and models come from configuration (see config/env.ts):
- * Neon AI Gateway, Anthropic, OpenAI, Google (Gemini) or any OpenAI-compatible endpoint as the
- * primary provider, and optionally OpenAI (Responses API) as a secondary provider that takes over
- * when the primary is rate-limited, out of quota, overloaded or unreachable.
+ * Neon AI Gateway, Anthropic, OpenAI, Google (Gemini) or any OpenAI-compatible endpoint.
  *
  * Rules every caller relies on:
  *  - Output is always structured JSON validated against a zod schema.
@@ -22,7 +20,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { APICallError, embedMany, generateText, NoObjectGeneratedError, Output, RetryError, type EmbeddingModel, type LanguageModel } from 'ai';
 import { ZodError, type z } from 'zod';
-import { ai, aiFallback, env } from '../config/env.js';
+import { ai, env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { aiUsage } from '../db/schema.js';
 
@@ -106,7 +104,7 @@ export function classifyAiError(err: unknown): AiError {
     if (status === 402 || /insufficient.{0,20}(credit|balance|funds)|billing/i.test(err.message)) return new AiError('quota_exhausted', scrub(err.message));
     if (status === 429) {
       // Daily or zero quotas will not recover within a retry window; per-minute limits will.
-      if (/PerDay|limit:\s*0\b|"quotaValue"\s*:\s*"0"|insufficient_quota|exceeded your current quota/i.test(text)) return new AiError('quota_exhausted', scrub(err.message), retryAfter);
+      if (/PerDay|limit:\s*0\b|"quotaValue"\s*:\s*"0"/i.test(text)) return new AiError('quota_exhausted', scrub(err.message), retryAfter);
       return new AiError('rate_limited', scrub(err.message), retryAfter);
     }
     if (status === 408) return new AiError('timeout', scrub(err.message));
@@ -128,84 +126,52 @@ export function classifyAiError(err: unknown): AiError {
 
 type Tier = 'fast' | 'reasoning';
 
-/** One provider's models. FINN uses a primary provider and, optionally, a secondary fallback. */
 interface Models {
   fast: LanguageModel;
   reasoning: LanguageModel;
   embedding: EmbeddingModel | null;
   label: string;
-  /** Provider id as recorded in ai_usage ('google', 'openai', ...). */
   provider: string;
-  /** Display name ('Google', 'OpenAI', ...). */
-  name: string;
   fastId: string;
   reasoningId: string;
-  pricing: { input?: number; output?: number };
 }
 
 function buildModels(): Models | null {
   const fastId = env.AI_MODEL;
   const reasoningId = env.AI_REASONING_MODEL ?? env.AI_MODEL;
-  const pricing = { input: env.AI_PRICE_INPUT_PER_MTOK, output: env.AI_PRICE_OUTPUT_PER_MTOK };
   switch (ai.provider) {
     case 'neon': {
       const neon = createNeon({ baseURL: env.NEON_AI_GATEWAY_BASE_URL, apiKey: env.NEON_AI_GATEWAY_TOKEN });
       const f = fastId ?? 'claude-haiku-4-5';
       const r = reasoningId ?? 'claude-sonnet-4-6';
-      return { fast: neon(f), reasoning: neon(r), embedding: neon.embeddingModel(env.AI_EMBEDDING_MODEL ?? 'qwen3-embedding-0-6b'), label: `Neon AI Gateway · ${r}`, provider: 'neon', name: 'Neon AI Gateway', fastId: f, reasoningId: r, pricing };
+      return { fast: neon(f), reasoning: neon(r), embedding: neon.embeddingModel(env.AI_EMBEDDING_MODEL ?? 'qwen3-embedding-0-6b'), label: `Neon AI Gateway · ${r}`, provider: 'neon', fastId: f, reasoningId: r };
     }
     case 'anthropic': {
       const p = createAnthropic({ apiKey: env.AI_API_KEY, ...(env.AI_BASE_URL ? { baseURL: env.AI_BASE_URL } : {}) });
-      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: null, label: `Anthropic · ${reasoningId}`, provider: 'anthropic', name: 'Anthropic', fastId: fastId!, reasoningId: reasoningId!, pricing };
+      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: null, label: `Anthropic · ${reasoningId}`, provider: 'anthropic', fastId: fastId!, reasoningId: reasoningId! };
     }
     case 'openai': {
       const p = createOpenAI({ apiKey: env.AI_API_KEY, ...(env.AI_BASE_URL ? { baseURL: env.AI_BASE_URL } : {}) });
-      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: env.AI_EMBEDDING_MODEL ? p.embedding(env.AI_EMBEDDING_MODEL) : null, label: `OpenAI · ${reasoningId}`, provider: 'openai', name: 'OpenAI', fastId: fastId!, reasoningId: reasoningId!, pricing };
+      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: env.AI_EMBEDDING_MODEL ? p.embedding(env.AI_EMBEDDING_MODEL) : null, label: `OpenAI · ${reasoningId}`, provider: 'openai', fastId: fastId!, reasoningId: reasoningId! };
     }
     case 'google': {
       const p = createGoogleGenerativeAI({ apiKey: env.AI_API_KEY, ...(env.AI_BASE_URL ? { baseURL: env.AI_BASE_URL } : {}) });
-      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: env.AI_EMBEDDING_MODEL ? p.textEmbeddingModel(env.AI_EMBEDDING_MODEL) : null, label: `Google · ${reasoningId}`, provider: 'google', name: 'Google', fastId: fastId!, reasoningId: reasoningId!, pricing };
+      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: env.AI_EMBEDDING_MODEL ? p.textEmbeddingModel(env.AI_EMBEDDING_MODEL) : null, label: `Google · ${reasoningId}`, provider: 'google', fastId: fastId!, reasoningId: reasoningId! };
     }
     case 'openai-compatible': {
       const p = createOpenAICompatible({ name: 'custom', apiKey: env.AI_API_KEY, baseURL: env.AI_BASE_URL! });
-      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: env.AI_EMBEDDING_MODEL ? p.textEmbeddingModel(env.AI_EMBEDDING_MODEL) : null, label: `${env.AI_BASE_URL} · ${reasoningId}`, provider: 'openai-compatible', name: 'OpenAI-compatible', fastId: fastId!, reasoningId: reasoningId!, pricing };
+      return { fast: p(fastId!), reasoning: p(reasoningId!), embedding: env.AI_EMBEDDING_MODEL ? p.textEmbeddingModel(env.AI_EMBEDDING_MODEL) : null, label: `${env.AI_BASE_URL} · ${reasoningId}`, provider: 'openai-compatible', fastId: fastId!, reasoningId: reasoningId! };
     }
     default:
       return null;
   }
 }
 
-/**
- * Secondary provider: OpenAI through the Responses API. Generation only — embeddings stay on the
- * primary provider, because vectors from different models cannot be compared with each other.
- */
-function buildFallback(): Models | null {
-  if (aiFallback.provider !== 'openai') return null;
-  const p = createOpenAI({ apiKey: env.OPENAI_API_KEY, ...(env.OPENAI_BASE_URL ? { baseURL: env.OPENAI_BASE_URL } : {}) });
-  const fastId = env.OPENAI_MODEL!;
-  const reasoningId = env.OPENAI_REASONING_MODEL ?? fastId;
-  return {
-    fast: p.responses(fastId),
-    reasoning: p.responses(reasoningId),
-    embedding: null,
-    label: `OpenAI · ${reasoningId}`,
-    provider: 'openai',
-    name: 'OpenAI',
-    fastId,
-    reasoningId,
-    pricing: { input: env.OPENAI_PRICE_INPUT_PER_MTOK, output: env.OPENAI_PRICE_OUTPUT_PER_MTOK },
-  };
-}
-
 let models = buildModels();
-let fallback = buildFallback();
 
-type TestModels = { fast: LanguageModel; reasoning: LanguageModel; embedding: EmbeddingModel | null; label: string };
-
-/** Test seam: inject mock models (e.g. MockLanguageModelV3 from 'ai/test'), optionally a fallback. */
-export function __setModelsForTest(m: TestModels | null, fb: Omit<TestModels, 'embedding'> | null = null) {
-  models = m ? { ...m, provider: 'test', name: 'Test', fastId: 'mock-fast', reasoningId: 'mock-reasoning', pricing: {} } : null;
-  fallback = m && fb ? { ...fb, embedding: null, provider: 'test-fallback', name: 'Test fallback', fastId: 'mock-fallback-fast', reasoningId: 'mock-fallback-reasoning', pricing: {} } : null;
+/** Test seam: inject mock models (e.g. MockLanguageModelV3 from 'ai/test'). */
+export function __setModelsForTest(m: { fast: LanguageModel; reasoning: LanguageModel; embedding: EmbeddingModel | null; label: string } | null) {
+  models = m ? { ...m, provider: 'test', fastId: 'mock-fast', reasoningId: 'mock-reasoning' } : null;
   probe = null;
   quotaBlockedUntil.clear();
 }
@@ -219,16 +185,9 @@ export const aiStatus = () => ({
   label: models?.label ?? null,
   embeddings: Boolean(models?.embedding),
   reason: models ? null : ai.reason ?? null,
-  fallback: fallback
-    ? { configured: true, provider: fallback.provider, chatModel: fallback.fastId, reasoningModel: fallback.reasoningId, reason: null }
-    : { configured: false, provider: null, chatModel: null, reasoningModel: null, reason: aiFallback.reason ?? null },
 });
 
-/** The primary provider's label (stable, so identical research inputs are still recognised). */
 export const aiLabel = () => models?.label ?? null;
-
-/** Display name of a provider id recorded with a result ('google' → 'Google'). */
-export const providerName = (id: string) => (models?.provider === id ? models.name : fallback?.provider === id ? fallback.name : id);
 
 // ---------------------------------------------------------------------------
 // Usage tracking
@@ -245,21 +204,20 @@ interface UsageNumbers {
   reasoningTokens?: number;
 }
 
-/** Estimated USD cost from the provider's configured prices; null when prices are not set. */
-function costOf(u: UsageNumbers, p: Models): number | null {
-  if (p.pricing.input === undefined || p.pricing.output === undefined) return null;
+function costOf(u: UsageNumbers): number | null {
+  if (env.AI_PRICE_INPUT_PER_MTOK === undefined || env.AI_PRICE_OUTPUT_PER_MTOK === undefined) return null;
   const output = (u.outputTokens ?? 0) + (u.reasoningTokens ?? 0);
-  return Math.round(((u.inputTokens ?? 0) * p.pricing.input + output * p.pricing.output) / 1e4) / 100;
+  return Math.round(((u.inputTokens ?? 0) * env.AI_PRICE_INPUT_PER_MTOK + output * env.AI_PRICE_OUTPUT_PER_MTOK) / 1e4) / 100;
 }
 
-function recordUsage(p: Models, row: { meta: CallMeta; model: string; tier: Tier; status: 'ok' | 'error'; errorCode?: string; attempts: number; usage?: UsageNumbers; latencyMs: number }) {
-  if (p.provider.startsWith('test')) return;
+function recordUsage(row: { meta: CallMeta; model: string; tier: Tier; status: 'ok' | 'error'; errorCode?: string; attempts: number; usage?: UsageNumbers; latencyMs: number }) {
+  if (!models || models.provider === 'test') return;
   const u = row.usage ?? {};
   const int = (n: number | undefined) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n) : null);
   const values: typeof aiUsage.$inferInsert = {
     userId: row.meta.userId ?? null,
     feature: row.meta.feature,
-    provider: p.provider,
+    provider: models.provider,
     model: row.model,
     tier: row.tier,
     status: row.status,
@@ -269,7 +227,7 @@ function recordUsage(p: Models, row: { meta: CallMeta; model: string; tier: Tier
     outputTokens: int(u.outputTokens),
     reasoningTokens: int(u.reasoningTokens),
     latencyMs: row.latencyMs,
-    costUsd: row.status === 'ok' ? costOf(u, p) : null,
+    costUsd: row.status === 'ok' ? costOf(u) : null,
   };
   const insert: Promise<unknown> = db.insert(aiUsage).values(values).execute();
   insert.catch((e: Error) => console.warn('[ai] usage not recorded:', e.message));
@@ -301,54 +259,39 @@ export function renderEvidence(items: EvidenceItem[]): string {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MAX_WAIT_MS = 20_000;
-/** Attempts on the secondary provider (bounded; it is only reached after the primary failed). */
-const FALLBACK_ATTEMPTS = 2;
 
 /**
  * Quotas are per model. Once a model reports an exhausted quota it is not called again until the
  * provider's reset time (capped at 24 h; 15 min when the provider gives none), so requests go
- * straight to the next model instead of failing first. Keyed by provider and model.
+ * straight to the fallback instead of failing first.
  */
 const quotaBlockedUntil = new Map<string, number>();
-const quotaKey = (p: Models, modelId: string) => `${p.provider}:${modelId}`;
-const blockedUntil = (p: Models, modelId: string) => {
-  const until = quotaBlockedUntil.get(quotaKey(p, modelId));
+const blockedUntil = (modelId: string) => {
+  const until = quotaBlockedUntil.get(modelId);
   return until && until > Date.now() ? until : null;
 };
 
-/** Failures that justify trying another provider: capacity and availability, not configuration. */
-const SWITCHABLE = new Set<AiErrorCode>(['quota_exhausted', 'rate_limited', 'overloaded', 'timeout', 'network']);
-
-function providerOptions(p: Models, thinking?: 'minimal' | 'low' | 'medium' | 'high') {
+function providerOptions(thinking?: 'minimal' | 'low' | 'medium' | 'high') {
   const level = thinking ?? env.AI_THINKING_LEVEL;
-  if (p.provider === 'google' && level) return { google: { thinkingConfig: { thinkingLevel: level } } };
+  if (models?.provider === 'google' && level) return { google: { thinkingConfig: { thinkingLevel: level } } };
   return undefined;
 }
 
 export interface GenerationResult<T> {
   output: T;
   model: string;
-  /** Provider that produced the output ('google', 'openai', ...). */
-  provider: string;
   usedFallback: boolean;
-  /** How the output was obtained when the requested model failed. */
-  fallback: 'secondary_provider' | 'fast_model' | null;
   attempts: number;
   latencyMs: number;
   usage: UsageNumbers;
 }
 
 /**
- * Runs one structured generation. The prompt, grounding rules and output schema are identical for
- * every provider, and every output is validated against the caller's schema.
- *
- *  1. The primary provider (Gemini), with bounded retries for transient errors:
- *     attempt n waits min(1s·2^(n-1) + jitter, provider retry-after, 20s).
- *  2. If it failed with a capacity or availability error (quota, rate limit, overload, timeout,
- *     network), the secondary provider (OpenAI), at most FALLBACK_ATTEMPTS attempts.
- *  3. For research (reasoning tier), the primary's fast model once, as a last resort.
- * Configuration errors (bad key, unknown model) and malformed output never switch providers.
- * Calls are sequential, so a request is never sent to two providers at once.
+ * Runs one structured generation with bounded retries:
+ *   attempt n waits min(1s·2^(n-1) + jitter, provider retry-after, 20s) after a transient error.
+ * Non-transient errors (bad key, missing model, exhausted quota) fail immediately. A reasoning
+ * call that is still overloaded/rate-limited/timing out after its retries, or whose model quota
+ * is exhausted, is tried once on the fast model (quotas are per model), and the result says so.
  */
 export async function generateStructuredWithMeta<T extends z.ZodType>(opts: {
   schema: T;
@@ -359,16 +302,15 @@ export async function generateStructuredWithMeta<T extends z.ZodType>(opts: {
   meta?: CallMeta;
 }): Promise<GenerationResult<z.infer<T>>> {
   if (!models) throw new AiUnavailableError();
-  const primary = models;
-  const secondary = fallback;
+  const m = models;
   const meta = opts.meta ?? { feature: 'unspecified' };
   const tier = opts.tier ?? 'fast';
-  const run = async (p: Models, which: Tier, maxAttempts: number) => {
-    const model = which === 'reasoning' ? p.reasoning : p.fast;
-    const modelId = which === 'reasoning' ? p.reasoningId : p.fastId;
+  const run = async (which: Tier, maxAttempts: number) => {
+    const model = which === 'reasoning' ? m.reasoning : m.fast;
+    const modelId = which === 'reasoning' ? m.reasoningId : m.fastId;
     let attempts = 0;
     const started = performance.now();
-    const until = blockedUntil(p, modelId);
+    const until = blockedUntil(modelId);
     if (until) throw new AiError('quota_exhausted', `${modelId} quota resets at ${new Date(until).toISOString()}`);
     for (;;) {
       attempts++;
@@ -381,48 +323,39 @@ export async function generateStructuredWithMeta<T extends z.ZodType>(opts: {
           temperature: 0,
           maxRetries: 0, // retries are handled here so they are classified and bounded
           timeout: env.AI_TIMEOUT_MS,
-          providerOptions: providerOptions(p, opts.thinking),
+          providerOptions: providerOptions(opts.thinking),
         });
         const output = opts.schema.parse(res.output);
         const usage = { inputTokens: res.usage.inputTokens, outputTokens: res.usage.outputTokens, reasoningTokens: res.usage.reasoningTokens };
         const latencyMs = Math.round(performance.now() - started);
-        recordUsage(p, { meta, model: modelId, tier: which, status: 'ok', attempts, usage, latencyMs });
-        return { output, model: modelId, provider: p.provider, attempts, latencyMs, usage };
+        recordUsage({ meta, model: modelId, tier: which, status: 'ok', attempts, usage, latencyMs });
+        return { output, model: modelId, attempts, latencyMs, usage };
       } catch (raw) {
         const err = classifyAiError(raw);
         const wait = Math.min(err.retryAfterMs ?? 1000 * 2 ** (attempts - 1) + Math.random() * 400, MAX_WAIT_MS);
-        if (err.code === 'quota_exhausted') quotaBlockedUntil.set(quotaKey(p, modelId), Date.now() + Math.min(err.retryAfterMs ?? 15 * 60_000, 24 * 3600_000));
+        if (err.code === 'quota_exhausted') quotaBlockedUntil.set(modelId, Date.now() + Math.min(err.retryAfterMs ?? 15 * 60_000, 24 * 3600_000));
         if (!err.retryable || attempts >= maxAttempts || (err.retryAfterMs ?? 0) > MAX_WAIT_MS) {
-          console.warn(`[ai] ${meta.feature}: ${err.code} after ${attempts} attempt(s) on ${p.provider}/${modelId}: ${err.detail}`);
-          recordUsage(p, { meta, model: modelId, tier: which, status: 'error', errorCode: err.code, attempts, latencyMs: Math.round(performance.now() - started) });
+          console.warn(`[ai] ${meta.feature}: ${err.code} after ${attempts} attempt(s) on ${modelId}: ${err.detail}`);
+          recordUsage({ meta, model: modelId, tier: which, status: 'error', errorCode: err.code, attempts, latencyMs: Math.round(performance.now() - started) });
           throw err;
         }
-        console.warn(`[ai] ${meta.feature}: ${err.code} on attempt ${attempts} (${p.provider}); retrying in ${Math.round(wait)}ms`);
+        console.warn(`[ai] ${meta.feature}: ${err.code} on attempt ${attempts}; retrying in ${Math.round(wait)}ms`);
         await sleep(wait);
       }
     }
   };
-
-  let first: AiError;
   try {
-    return { ...(await run(primary, tier, env.AI_MAX_RETRIES + 1)), usedFallback: false, fallback: null };
+    const r = await run(tier, env.AI_MAX_RETRIES + 1);
+    return { ...r, usedFallback: false };
   } catch (err) {
-    first = err as AiError;
-    if (!SWITCHABLE.has(first.code)) throw first;
-  }
-  if (secondary) {
-    console.warn(`[ai] ${meta.feature}: ${primary.name} unavailable (${first.code}); switching to ${secondary.name}`);
-    try {
-      return { ...(await run(secondary, tier, FALLBACK_ATTEMPTS)), usedFallback: true, fallback: 'secondary_provider' };
-    } catch (err) {
-      console.warn(`[ai] ${meta.feature}: ${secondary.name} fallback failed (${(err as AiError).code})`);
+    const e = err as AiError;
+    if (tier === 'reasoning' && m.fastId !== m.reasoningId && ['overloaded', 'rate_limited', 'timeout', 'quota_exhausted'].includes(e.code)) {
+      console.warn(`[ai] ${meta.feature}: reasoning model unavailable (${e.code}); trying the fast model once`);
+      const r = await run('fast', 1);
+      return { ...r, usedFallback: true };
     }
+    throw err;
   }
-  if (tier === 'reasoning' && primary.fastId !== primary.reasoningId) {
-    console.warn(`[ai] ${meta.feature}: trying ${primary.name}'s fast model once`);
-    return { ...(await run(primary, 'fast', 1)), usedFallback: true, fallback: 'fast_model' };
-  }
-  throw first;
 }
 
 export async function generateStructured<T extends z.ZodType>(opts: Parameters<typeof generateStructuredWithMeta<T>>[0]): Promise<z.infer<T>> {
@@ -430,17 +363,16 @@ export async function generateStructured<T extends z.ZodType>(opts: Parameters<t
 }
 
 // ---------------------------------------------------------------------------
-// Embeddings (primary provider only: vectors from different models are not comparable)
+// Embeddings
 // ---------------------------------------------------------------------------
 
 export async function embedTexts(texts: string[], meta: CallMeta = { feature: 'embedding' }): Promise<number[][]> {
   if (!models?.embedding) throw new AiUnavailableError('No embedding model is configured.');
   if (texts.length === 0) return [];
-  const p = models;
   const started = performance.now();
   try {
     const { embeddings, usage } = await embedMany({
-      model: p.embedding!,
+      model: models.embedding,
       values: texts,
       providerOptions: {
         neon: { dimensions: env.AI_EMBEDDING_DIMENSIONS },
@@ -450,11 +382,11 @@ export async function embedTexts(texts: string[], meta: CallMeta = { feature: 'e
       maxParallelCalls: 1,
       maxRetries: env.AI_MAX_RETRIES,
     });
-    recordUsage(p, { meta, model: env.AI_EMBEDDING_MODEL ?? 'embedding', tier: 'fast', status: 'ok', attempts: 1, usage: { inputTokens: usage?.tokens }, latencyMs: Math.round(performance.now() - started) });
+    recordUsage({ meta, model: env.AI_EMBEDDING_MODEL ?? 'embedding', tier: 'fast', status: 'ok', attempts: 1, usage: { inputTokens: usage?.tokens }, latencyMs: Math.round(performance.now() - started) });
     return embeddings;
   } catch (raw) {
     const err = classifyAiError(raw);
-    recordUsage(p, { meta, model: env.AI_EMBEDDING_MODEL ?? 'embedding', tier: 'fast', status: 'error', errorCode: err.code, attempts: 1, latencyMs: Math.round(performance.now() - started) });
+    recordUsage({ meta, model: env.AI_EMBEDDING_MODEL ?? 'embedding', tier: 'fast', status: 'error', errorCode: err.code, attempts: 1, latencyMs: Math.round(performance.now() - started) });
     throw err;
   }
 }
@@ -466,38 +398,30 @@ export const embeddingsAvailable = () => Boolean(models?.embedding);
 // ---------------------------------------------------------------------------
 
 type ModelCheck = { id: string; available: boolean; error: { code: AiErrorCode; message: string } | null; quotaResetsAt: string | null };
-type ProviderCheck = { fast: ModelCheck; reasoning: ModelCheck };
-let probe: { at: number; latencyMs: number; primary: ProviderCheck; secondary: ProviderCheck | null } | null = null;
+let probe: { at: number; latencyMs: number; fast: ModelCheck; reasoning: ModelCheck } | null = null;
 const PROBE_TTL_MS = 10 * 60_000;
 
-const statusCode = (status: number): AiErrorCode =>
-  status === 404 ? 'model_unavailable' : status === 400 || status === 401 || status === 403 ? 'invalid_credentials' : status === 429 ? 'rate_limited' : 'provider_error';
-
 /**
- * Gemini and the OpenAI fallback: the model metadata endpoint verifies the key and that the model
- * is served to it, and consumes no generation quota or credit. Other providers: one tiny generation.
+ * Gemini: the model metadata endpoint verifies the key and that the model is served to it, and
+ * consumes no generation quota. Other providers: one tiny generation (counted in ai_usage).
  */
-async function checkModel(p: Models, tier: Tier): Promise<ModelCheck> {
-  const id = tier === 'reasoning' ? p.reasoningId : p.fastId;
-  const until = blockedUntil(p, id);
+async function checkModel(tier: Tier): Promise<ModelCheck> {
+  const m = models!;
+  const id = tier === 'reasoning' ? m.reasoningId : m.fastId;
+  const until = blockedUntil(id);
   const quota = until ? { code: 'quota_exhausted' as AiErrorCode, message: USER_MESSAGES.quota_exhausted } : null;
   try {
-    const metadata: { url: string; headers: Record<string, string> } | null =
-      p.provider === 'google'
-        ? { url: `${(env.AI_BASE_URL ?? 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '')}/models/${encodeURIComponent(id)}`, headers: { 'x-goog-api-key': env.AI_API_KEY ?? '' } }
-        : p === fallback
-          ? { url: `${(env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1').replace(/\/$/, '')}/models/${encodeURIComponent(id)}`, headers: { Authorization: `Bearer ${env.OPENAI_API_KEY ?? ''}` } }
-          : null;
-    if (metadata) {
-      const res = await fetch(metadata.url, { headers: metadata.headers, signal: AbortSignal.timeout(15_000) });
+    if (m.provider === 'google') {
+      const base = (env.AI_BASE_URL ?? 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '');
+      const res = await fetch(`${base}/models/${encodeURIComponent(id)}`, { headers: { 'x-goog-api-key': env.AI_API_KEY ?? '' }, signal: AbortSignal.timeout(15_000) });
       if (!res.ok) {
-        const code = statusCode(res.status);
+        const code: AiErrorCode = res.status === 404 ? 'model_unavailable' : res.status === 400 || res.status === 401 || res.status === 403 ? 'invalid_credentials' : res.status === 429 ? 'rate_limited' : 'provider_error';
         return { id, available: false, error: { code, message: USER_MESSAGES[code] }, quotaResetsAt: null };
       }
     } else {
       const started = performance.now();
-      const res = await generateText({ model: tier === 'reasoning' ? p.reasoning : p.fast, prompt: 'Reply with the single word OK.', maxRetries: 1, timeout: 30_000 });
-      recordUsage(p, { meta: { feature: 'status_probe' }, model: id, tier, status: 'ok', attempts: 1, usage: { inputTokens: res.usage.inputTokens, outputTokens: res.usage.outputTokens }, latencyMs: Math.round(performance.now() - started) });
+      const res = await generateText({ model: tier === 'reasoning' ? m.reasoning : m.fast, prompt: 'Reply with the single word OK.', maxRetries: 1, timeout: 30_000 });
+      recordUsage({ meta: { feature: 'status_probe' }, model: id, tier, status: 'ok', attempts: 1, usage: { inputTokens: res.usage.inputTokens, outputTokens: res.usage.outputTokens }, latencyMs: Math.round(performance.now() - started) });
     }
     return { id, available: !until, error: quota, quotaResetsAt: until ? new Date(until).toISOString() : null };
   } catch (raw) {
@@ -506,34 +430,27 @@ async function checkModel(p: Models, tier: Tier): Promise<ModelCheck> {
   }
 }
 
-async function checkProvider(p: Models): Promise<ProviderCheck> {
-  const [fast, reasoning] = await Promise.all([checkModel(p, 'fast'), p.reasoningId === p.fastId ? null : checkModel(p, 'reasoning')]);
-  return { fast, reasoning: reasoning ?? fast };
-}
-
 export async function probeAi(force = false) {
-  if (!models) return { available: false, checkedAt: null, latencyMs: null, models: null, fallback: null, error: { code: 'not_configured' as AiErrorCode, message: ai.reason ?? USER_MESSAGES.not_configured } };
+  if (!models) return { available: false, checkedAt: null, latencyMs: null, models: null, error: { code: 'not_configured' as AiErrorCode, message: ai.reason ?? USER_MESSAGES.not_configured } };
   if (force || !probe || Date.now() - probe.at >= PROBE_TTL_MS) {
     const started = performance.now();
-    const [primary, secondary] = await Promise.all([checkProvider(models), fallback ? checkProvider(fallback) : Promise.resolve(null)]);
-    probe = { at: Date.now(), latencyMs: Math.round(performance.now() - started), primary, secondary };
+    const [fast, reasoning] = await Promise.all([checkModel('fast'), models.reasoningId === models.fastId ? null : checkModel('reasoning')]);
+    probe = { at: Date.now(), latencyMs: Math.round(performance.now() - started), fast, reasoning: reasoning ?? fast };
   }
   // Quota blocks can start or end between probes; reflect the current state.
-  const live = (p: Models, c: ModelCheck): ModelCheck => {
-    const until = blockedUntil(p, c.id);
+  const live = (c: ModelCheck): ModelCheck => {
+    const until = blockedUntil(c.id);
     if (until) return { ...c, available: false, error: { code: 'quota_exhausted', message: USER_MESSAGES.quota_exhausted }, quotaResetsAt: new Date(until).toISOString() };
     return c.error?.code === 'quota_exhausted' ? { ...c, available: true, error: null, quotaResetsAt: null } : c;
   };
-  const fast = live(models, probe.primary.fast);
-  const reasoning = live(models, probe.primary.reasoning);
-  const secondary = fallback && probe.secondary ? { provider: fallback.provider, fast: live(fallback, probe.secondary.fast), reasoning: live(fallback, probe.secondary.reasoning) } : null;
-  const available = fast.available || reasoning.available || Boolean(secondary && (secondary.fast.available || secondary.reasoning.available));
+  const fast = live(probe.fast);
+  const reasoning = live(probe.reasoning);
+  const available = fast.available || reasoning.available;
   return {
     available,
     checkedAt: new Date(probe.at).toISOString(),
     latencyMs: probe.latencyMs,
     models: { fast, reasoning },
-    fallback: secondary,
     error: available ? null : reasoning.error ?? fast.error,
   };
 }

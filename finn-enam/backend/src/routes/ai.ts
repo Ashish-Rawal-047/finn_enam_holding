@@ -31,8 +31,6 @@ aiRouter.get(
       latencyMs: live.latencyMs,
       error: live.error,
       reason: s.reason,
-      // Secondary provider (used only when the primary is rate-limited, out of quota or down).
-      fallback: { ...s.fallback, available: live.fallback ? live.fallback.fast.available || live.fallback.reasoning.available : false, models: live.fallback ? { fast: live.fallback.fast, reasoning: live.fallback.reasoning } : null },
     });
   }),
 );
@@ -48,7 +46,6 @@ aiRouter.get(
       db
         .select({
           feature: aiUsage.feature,
-          provider: aiUsage.provider,
           model: aiUsage.model,
           requests: sql<number>`count(*)::int`,
           errors: sql<number>`count(*) filter (where ${aiUsage.status} = 'error')::int`,
@@ -60,12 +57,11 @@ aiRouter.get(
         })
         .from(aiUsage)
         .where(mine)
-        .groupBy(aiUsage.feature, aiUsage.provider, aiUsage.model)
+        .groupBy(aiUsage.feature, aiUsage.model)
         .orderBy(desc(sql`count(*)`)),
       db
         .select({
           feature: aiUsage.feature,
-          provider: aiUsage.provider,
           model: aiUsage.model,
           status: aiUsage.status,
           errorCode: aiUsage.errorCode,
