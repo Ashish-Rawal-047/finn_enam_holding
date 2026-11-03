@@ -67,9 +67,22 @@ Migrations only add; for anything that rewrites or drops data, take a Neon branc
 
 * **Vercel:** Project → Deployments → a deployment → *Build Logs*; runtime proxy errors show under *Logs*.
 * **Render:** Dashboard → `finn-api` → *Events* (deploy status) and *Logs* (startup lines report database, AI provider check and demo account; secrets are never logged).
-* **Health:** `GET /api/health` (database, AI, realtime, providers) and `GET /api/ai/status` (signed in) on either URL.
+* **Health:** `GET /api/live` (liveness, no database; used by Render's health check), `GET /api/health` (readiness: database, AI, realtime, providers) and `GET /api/ai/status` (signed in) on either URL.
+
+## Performance monitoring
+
+The API writes one JSON line per event to stdout (Render → *Logs*); lines never contain credentials, tokens, cookies, request bodies, query strings, ids or parameter values.
+
+| `evt` | Meaning |
+| --- | --- |
+| `startup.listening` | `msSinceProcessStart` — process start to accepting requests |
+| `startup.task` | `task` (`fail-interrupted-jobs`, `demo-account`, `ai-probe`), `ms`, `ok` — background start-up work, after the server is already listening |
+| `http` | `method`, `route` (ids replaced by `:id`), `status`, `ms` — every `/api` request; `/api/live` and `/api/health` only when slower than 1 s |
+| `db.slow` | `ms`, `sql` (first 80 characters of the parameterised statement) — queries over 500 ms |
+
+Every API response also carries `Server-Timing: app;dur=<ms>` (browser dev tools → Network → Timing), which separates server time from network and cold-start time. Filter Render logs by `"evt":"http"` or `"evt":"db.slow"`.
 
 ## Free-tier behaviour
 
-* Render's free web service sleeps after ~15 minutes without traffic; the first request then takes 30–60 s. The login page pings `/api/health` on load to start it early. The in-process scheduler (market data, announcements) only runs while the service is awake. A paid instance removes both limits.
+* Render's free web service sleeps after ~15 minutes without traffic; the first request then waits while Render starts the container (≈20–60 s, measured 23 s; the app itself is ready ~1 s after its process starts). The page probes `/api/live` once on load (a single shared probe, bounded to 90 s) to start it early and explains the wait; credentials and session refreshes are sent only after the server answers. There is deliberately no keep-alive pinging. The in-process scheduler (market data, announcements) only runs while the service is awake. A paid instance removes both limits.
 * Gemini's free tier allows ~20 requests per day for `gemini-3.5-flash`; research falls back to `gemini-3.5-flash-lite` and says so in the report.

@@ -34,6 +34,8 @@ export const HomeScreen: React.FC<Props> = ({ onInspectSignal, onOpenNotificatio
     .filter((e) => !['completed', 'abandoned'].includes(e.status))
     .sort((a, b) => (a.expectedCompletionDate ?? '9999').localeCompare(b.expectedCompletionDate ?? '9999'))
     .slice(0, 3);
+  // Known only once /home answers; until then the other sections load alongside it.
+  const emptyPortfolio = home.data?.overview.trackedCompanies === 0;
 
   return (
     <div className="space-y-8 pt-5">
@@ -57,14 +59,12 @@ export const HomeScreen: React.FC<Props> = ({ onInspectSignal, onOpenNotificatio
         </motion.div>
       </section>
 
+      {/* Portfolio overview. The sections below load in parallel with it, each with its own state. */}
       {home.isLoading ? (
-        <div className="space-y-4">
-          <Skeleton className="h-[260px] w-full" />
-          <Skeleton className="h-32 w-full" />
-        </div>
+        <Skeleton className="h-[260px] w-full" />
       ) : home.isError || !home.data ? (
         <ErrorState error={home.error} onRetry={() => home.refetch()} />
-      ) : home.data.overview.trackedCompanies === 0 ? (
+      ) : emptyPortfolio ? (
         <EmptyState
           title="Your portfolio is empty"
           body="Add the companies you follow and FINN will monitor prices, volumes, filings and corporate events for them."
@@ -78,11 +78,13 @@ export const HomeScreen: React.FC<Props> = ({ onInspectSignal, onOpenNotificatio
           }
         />
       ) : (
-        <>
-          <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.28, ease: EASE_OUT }}>
-            <PortfolioPanel overview={home.data.overview} holdings={portfolio.data ?? []} onOpenCompany={onOpenCompany} />
-          </motion.div>
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1, ease: EASE_OUT }}>
+          <PortfolioPanel overview={home.data.overview} holdings={portfolio.data ?? []} onOpenCompany={onOpenCompany} />
+        </motion.div>
+      )}
 
+      {!emptyPortfolio && (
+        <>
           <FilingsDigest onInspectSignal={onInspectSignal} />
 
           <AlertList onInspectSignal={onInspectSignal} onOpenCompany={onOpenCompany} onOpenHistory={onOpenNotifications} onViewHistoricalEvent={onViewHistoricalEvent} />

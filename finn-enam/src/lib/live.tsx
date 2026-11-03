@@ -3,22 +3,21 @@
  * per-user live query; we subscribe and refresh notification-related queries whenever the
  * result changes. Otherwise the unread count is polled every 30 seconds.
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { createRealtimeClient, type RealtimeClient, type SealedLiveQuery } from '@neon/realtime/client';
-import { RealtimeProvider, useLiveQuery } from '@neon/realtime-react';
-import { ApiRequestError, request } from './api';
-import { qk, useNotifications } from './queries';
+import { ApiRequestError } from './api';
+import { useNotifications } from './queries';
+import { fetchSealed, type Sealed } from './live-shared';
 
-interface LiveRow {
-  id: string;
-  read_at: string | null;
-  archived_at: string | null;
-}
-
-type Sealed = { url: string; sealed: SealedLiveQuery<LiveRow> };
-
-const fetchSealed = () => request<Sealed>('/notifications/live', { method: 'POST', retries: 0 });
+// The realtime client is only needed after sign-in, so it is loaded separately from the main
+// bundle (in parallel with the request for the sealed live query).
+const loadBridge = () => import('./live-realtime');
+// If that chunk cannot load (offline, or a redeploy replaced it), fall back to polling.
+const PollInstead: React.FC<{ onMode: (m: LiveMode) => void }> = ({ onMode }) => {
+  useEffect(() => onMode('polling'), [onMode]);
+  return null;
+};
+const RealtimeBridge = lazy(() => loadBridge().catch(() => ({ default: PollInstead })));
 
 export type LiveMode = 'connecting' | 'realtime' | 'polling';
 
@@ -35,14 +34,14 @@ export function useUnreadCount(mode: LiveMode) {
 }
 
 export const LiveNotifications: React.FC<{ onMode: (m: LiveMode) => void }> = ({ onMode }) => {
-  const [state, setState] = useState<{ client: RealtimeClient; sealed: SealedLiveQuery<LiveRow> } | null>(null);
+  const [state, setState] = useState<Sealed | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    void loadBridge().catch(() => undefined);
     fetchSealed()
       .then((r) => {
-        if (cancelled) return;
-        setState({ client: createRealtimeClient({ url: r.url }), sealed: r.sealed });
+        if (!cancelled) setState(r);
       })
       .catch((err) => {
         if (!cancelled) onMode('polling');
@@ -55,28 +54,8 @@ export const LiveNotifications: React.FC<{ onMode: (m: LiveMode) => void }> = ({
 
   if (!state) return null;
   return (
-    <RealtimeProvider client={state.client}>
-      <LiveBridge sealed={state.sealed} onMode={onMode} />
-    </RealtimeProvider>
+    <Suspense fallback={null}>
+      <RealtimeBridge live={state} onMode={onMode} />
+    </Suspense>
   );
-};
-
-const LiveBridge: React.FC<{ sealed: SealedLiveQuery<LiveRow>; onMode: (m: LiveMode) => void }> = ({ sealed, onMode }) => {
-  const qc = useQueryClient();
-  const refreshQuery = useCallback(() => fetchSealed().then((r) => r.sealed), []);
-  const { data, status } = useLiveQuery(sealed, { refreshQuery });
-
-  useEffect(() => {
-    onMode(status === 'error' ? 'polling' : data === undefined ? 'connecting' : 'realtime');
-  }, [status, data, onMode]);
-
-  // A change in ids, read or archive state means new or updated notifications.
-  const signature = data ? data.map((r) => `${r.id}:${r.read_at ?? ''}:${r.archived_at ?? ''}`).join('|') : null;
-  useEffect(() => {
-    if (signature === null) return;
-    qc.invalidateQueries({ queryKey: ['notifications'] });
-    qc.invalidateQueries({ queryKey: qk.home });
-    qc.invalidateQueries({ queryKey: qk.portfolio });
-  }, [signature, qc]);
-  return null;
 };

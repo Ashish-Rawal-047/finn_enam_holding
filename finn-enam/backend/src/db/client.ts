@@ -26,12 +26,21 @@ export const db = drizzle(pool, { schema });
 export type Db = typeof db;
 export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
-export async function pingDatabase(): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
+/** `select 1`, bounded by `timeoutMs` so a waking database cannot hang the caller. */
+export async function pingDatabase(timeoutMs = 4_000): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
   const started = Date.now();
+  let timer: NodeJS.Timeout | undefined;
   try {
-    await pool.query('select 1');
+    await Promise.race([
+      pool.query('select 1'),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`no answer within ${timeoutMs} ms`)), timeoutMs);
+      }),
+    ]);
     return { ok: true, latencyMs: Date.now() - started };
   } catch (err) {
     return { ok: false, latencyMs: Date.now() - started, error: (err as Error).message };
+  } finally {
+    clearTimeout(timer);
   }
 }

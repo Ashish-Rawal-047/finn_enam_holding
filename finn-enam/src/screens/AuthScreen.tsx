@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
@@ -42,19 +42,35 @@ export const AuthScreen: React.FC = () => {
     };
   }, []);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // 'connecting': waiting for a sleeping server before sending the credentials.
+  const [busy, setBusy] = useState<false | 'connecting' | 'signing-in'>(false);
+  // Synchronous guard: a double tap must not send two requests before React re-renders.
+  const inFlight = useRef(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
+    if (inFlight.current) return;
+    inFlight.current = true;
     setError(null);
     try {
+      // Credentials are sent only once the server is answering, so they are never lost to a
+      // gateway error mid cold start. Bounded: waitForServer gives up after 90 s.
+      setBusy('connecting');
+      if (!(await waitForServer())) {
+        setServer('unreachable');
+        setError('FINN is not responding right now. Check your connection, then try again.');
+        return;
+      }
+      setServer('ready');
+      setBusy('signing-in');
       await (mode === 'login' ? login(email, password) : register({ email, password, fullName }));
     } catch (err) {
-      if (isServerStarting(err)) setError('FINN is starting up. Please try again in a moment.');
+      if (isServerStarting(err)) setError('FINN could not be reached. Please try again in a moment.');
       else if (err instanceof ApiRequestError && Array.isArray(err.details)) setError((err.details as Array<{ message: string }>).map((d) => d.message).join(' '));
       else setError((err as Error).message);
     } finally {
+      // Always release the button, whatever happened (on success this screen unmounts).
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -111,17 +127,17 @@ export const AuthScreen: React.FC = () => {
 
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy !== false}
+            aria-busy={busy !== false}
             className="!mt-6 flex w-full min-h-[50px] items-center justify-center gap-2 rounded-lg bg-forest text-[14.5px] font-semibold text-white transition-colors duration-200 hover:bg-forest-light active:scale-[0.99] disabled:opacity-60 dark:bg-emerald dark:text-ink-bg"
           >
             {busy && <Loader2 size={16} className="animate-spin" />}
-            {mode === 'login' ? 'Sign in' : 'Create account'}
+            {busy === 'connecting' ? 'Connecting…' : mode === 'login' ? 'Sign in' : 'Create account'}
           </button>
 
-          {(server === 'starting' || server === 'unreachable') && (
-            <p role="status" className="flex items-center justify-center gap-2 text-[12px] text-ink-muted">
-              {server === 'starting' && <Loader2 size={12} className="animate-spin" />}
-              {server === 'starting' ? 'Connecting…' : 'FINN is not responding. Please try again shortly.'}
+          {(server === 'starting' || server === 'unreachable') && !error && (
+            <p role="status" className="text-center text-[12px] leading-snug text-ink-muted">
+              {server === 'starting' ? 'Waking the FINN server. This can take up to a minute after a quiet period.' : 'FINN is not responding. Please try again shortly.'}
             </p>
           )}
         </motion.form>

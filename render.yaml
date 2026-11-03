@@ -9,7 +9,8 @@ services:
     rootDir: finn-enam/backend
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /api/health
+    # Liveness only (no database round trip): a waking database must not get a healthy process restarted.
+    healthCheckPath: /api/live
     autoDeploy: true
     branch: main
     envVars:

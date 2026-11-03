@@ -1,6 +1,6 @@
 # FINN REST API
 
-Base path `/api`. Everything except `/health` and `/auth/{register,login,refresh,logout}` needs `Authorization: Bearer <accessToken>`.
+Base path `/api`. Everything except `/live`, `/health` and `/auth/{register,login,refresh,logout}` needs `Authorization: Bearer <accessToken>`.
 
 **Errors** always use one envelope:
 
@@ -111,7 +111,8 @@ Codes:
 | GET / PATCH | `/settings/alerts` | `priceMoveThresholdPct` (1–20, default 2.5), `volumeSurgeMultiple` (1.5–10), `announcementCategories[]`, `managementChangeAlerts`, `financialResultAlerts`, `eventAlerts`, `minimumPriority`, `inAppNotifications`. PATCH re-runs the alert engine and returns `newNotifications`. |
 | GET | `/digest?window=24h\|48h\|7d\|custom&from=YYYY-MM-DD&to=YYYY-MM-DD` | Filings digest: every announcement on your portfolio in the window. `24h` is the default; rolling windows end now. `custom` needs `from` and `to` (inclusive local days in your profile time zone, at most 366 days, `from` not in the future); otherwise `400`. Returns `{ window: { id, start, end, fromDate, toDate, timezone }, total, materialCount, routineCount, byPriority, material[], routine[], latestFilingAt, isDemo }`. `material` is ranked by materiality, then recency; `routine` (category routine or materiality below 20, the same rule that keeps a filing from alerting) is newest first. Each group returns at most 100 items; counts cover the whole window. Items: `{ id, company, category, categoryLabel, title, summary, announcedAt, exchange, materialityScore, priority, routine, signalId, sourceDocument, isDemo }`. `latestFilingAt` is your portfolio's newest filing at any time, so an empty window can say how far back to look |
 | GET | `/home` | Greeting name, quote of the day (with source), portfolio overview, top-5 priority alerts |
-| GET | `/health` | Database, AI, Realtime and provider status (no secrets) |
+| GET | `/live` | Liveness: `{ ok, uptimeSeconds }` as soon as the process is up, no database (host health checks, client wake-up probe) |
+| GET | `/health` | Readiness: database (bounded 4 s ping), AI, Realtime and provider status, `uptimeSeconds` (no secrets) |
 
 ## AI
 | Method | Path | Notes |

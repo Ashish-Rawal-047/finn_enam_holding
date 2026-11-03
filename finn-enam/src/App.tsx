@@ -34,7 +34,7 @@ function readTheme(): Theme {
 }
 
 export function App() {
-  const { status, user } = useAuth();
+  const { status, user, retry } = useAuth();
   const [theme, setTheme] = useState<Theme>(readTheme);
 
   useEffect(() => {
@@ -52,13 +52,13 @@ export function App() {
     if (user?.theme) setTheme(user.theme);
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (status === 'loading') {
+  if (status === 'loading' || status === 'offline') {
     return (
       <AppFrame>
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center" role="status">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-8 text-center" role="status" aria-live="polite">
           <FinnLogo size={40} />
-          <Spinner className="text-forest dark:text-emerald" />
-          <SlowStartNote />
+          {status === 'loading' ? <Spinner className="text-forest dark:text-emerald" /> : null}
+          {status === 'loading' ? <ConnectingNote /> : <OfflineNote onRetry={retry} />}
         </div>
       </AppFrame>
     );
@@ -73,14 +73,41 @@ export function App() {
   return <Shell theme={theme} setTheme={setTheme} />;
 }
 
-/** Shown only if loading takes a while (a sleeping free-tier server can need up to a minute). */
-function SlowStartNote() {
-  const [slow, setSlow] = useState(false);
+/**
+ * Restoring a session normally takes well under a second. If it does not, say why: a free-tier
+ * server sleeps when idle and needs up to a minute to start. The wait is bounded (see AuthContext).
+ */
+function ConnectingNote() {
+  const [stage, setStage] = useState(0);
   useEffect(() => {
-    const t = setTimeout(() => setSlow(true), 3_000);
-    return () => clearTimeout(t);
+    const a = setTimeout(() => setStage(1), 2_000);
+    const b = setTimeout(() => setStage(2), 8_000);
+    return () => {
+      clearTimeout(a);
+      clearTimeout(b);
+    };
   }, []);
-  return slow ? <p className="text-[12px] text-ink-muted">Connecting…</p> : null;
+  if (stage === 0) return null;
+  return (
+    <p className="max-w-[260px] text-[12px] leading-snug text-ink-muted">
+      {stage === 1 ? 'Connecting…' : 'Waking the FINN server after a quiet period. This can take up to a minute.'}
+    </p>
+  );
+}
+
+function OfflineNote({ onRetry }: { onRetry: () => void }) {
+  return (
+    <>
+      <p className="max-w-[260px] text-[13px] leading-snug text-ink-muted">FINN is not responding right now. Check your connection, then try again.</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-1 min-h-[44px] rounded-lg bg-forest px-6 text-[14px] font-semibold text-white hover:bg-forest-light dark:bg-emerald dark:text-ink-bg"
+      >
+        Retry
+      </button>
+    </>
+  );
 }
 
 // --- URL routing ---------------------------------------------------------------------
